@@ -1,0 +1,182 @@
+[
+  {
+    "fid": "6.3.3.2.3-1",
+    "title": "General ON/OFF time mask for NR UL transmission in FR1",
+    "printed": 713,
+    "pdf_page": 714,
+    "file": "6.3.3.2.3-1.png",
+    "w": 1107,
+    "h": 274
+  },
+  {
+    "fid": "6.3.3.4.3-1",
+    "title": "PRACH ON/OFF time mask",
+    "printed": 718,
+    "pdf_page": 719,
+    "file": "6.3.3.4.3-1.png",
+    "w": 1054,
+    "h": 1063
+  },
+  {
+    "fid": "6.3.3.6.3-1",
+    "title": "Single SRS time mask for NR UL transmission",
+    "printed": 723,
+    "pdf_page": 724,
+    "file": "6.3.3.6.3-1.png",
+    "w": 754,
+    "h": 306
+  },
+  {
+    "fid": "6.3.3.6.3-2",
+    "title": "Consecutive SRS time mask for the case when no power change is required with",
+    "printed": 724,
+    "pdf_page": 725,
+    "file": "6.3.3.6.3-2.png",
+    "w": 1116,
+    "h": 255
+  },
+  {
+    "fid": "6.3.3.6.3-3",
+    "title": "Consecutive SRS time mask for the case when power change is required and when",
+    "printed": 724,
+    "pdf_page": 725,
+    "file": "6.3.3.6.3-3.png",
+    "w": 1125,
+    "h": 290
+  },
+  {
+    "fid": "6.3.3.6.3-4",
+    "title": "Consecutive SRS time mask for the case when power change is required and when",
+    "printed": 724,
+    "pdf_page": 725,
+    "file": "6.3.3.6.3-4.png",
+    "w": 1142,
+    "h": 352
+  },
+  {
+    "fid": "6.3.3.6.3-5",
+    "title": "FR1 Time mask for 15 kHz and 30 kHz SCS for the case when consecutive SRS",
+    "printed": 724,
+    "pdf_page": 725,
+    "file": "6.3.3.6.3-5.png",
+    "w": 1142,
+    "h": 256
+  },
+  {
+    "fid": "6.3.4.3.4.2-1",
+    "title": "FDD ramping up test power patterns",
+    "printed": 737,
+    "pdf_page": 738,
+    "file": "6.3.4.3.4.2-1.png",
+    "w": 819,
+    "h": 881
+  },
+  {
+    "fid": "6.3.4.3.4.2-2",
+    "title": "FDD ramping down test power patterns",
+    "printed": 738,
+    "pdf_page": 739,
+    "file": "6.3.4.3.4.2-2.png",
+    "w": 822,
+    "h": 913
+  },
+  {
+    "fid": "6.3.4.3.4.2-3",
+    "title": "TDD ramping up test power patterns",
+    "printed": 739,
+    "pdf_page": 740,
+    "file": "6.3.4.3.4.2-3.png",
+    "w": 521,
+    "h": 397
+  },
+  {
+    "fid": "6.3.4.3.4.2-4",
+    "title": "TDD ramping down test power patterns",
+    "printed": 740,
+    "pdf_page": 741,
+    "file": "6.3.4.3.4.2-4.png",
+    "w": 521,
+    "h": 397
+  },
+  {
+    "fid": "6.3.4.3.4.2-5",
+    "title": "Alternating Test Power patterns",
+    "printed": 741,
+    "pdf_page": 742,
+    "file": "6.3.4.3.4.2-5.png",
+    "w": 856,
+    "h": 400
+  },
+  {
+    "fid": "6.3.4.4.4.2-1",
+    "title": "Test uplink transmission",
+    "printed": 751,
+    "pdf_page": 752,
+    "file": "6.3.4.4.4.2-1.png",
+    "w": 942,
+    "h": 465
+  },
+  {
+    "fid": "6.4.2.1a.4.2-1",
+    "title": "Error Vector Magnitude including symbols with transient period",
+    "printed": 1005,
+    "pdf_page": 1006,
+    "file": "6.4.2.1a.4.2-1.png",
+    "w": 797,
+    "h": 370
+  },
+  {
+    "fid": "6.4.2.1a.4.2-2",
+    "title": "Test power patterns for Error Vector Magnitude including symbols with",
+    "printed": 1005,
+    "pdf_page": 1006,
+    "file": "6.4.2.1a.4.2-2.png",
+    "w": 1076,
+    "h": 441
+  },
+  {
+    "fid": "6.4.2.4.3-1",
+    "title": "The limits for EVM equalizer spectral flatness with the maximum allowed variation",
+    "printed": 1016,
+    "pdf_page": 1017,
+    "file": "6.4.2.4.3-1.png",
+    "w": 1140,
+    "h": 407
+  },
+  {
+    "fid": "6.4.2.4.5-1",
+    "title": "The test requirements for EVM equalizer spectral flatness with the maximum",
+    "printed": 1018,
+    "pdf_page": 1019,
+    "file": "6.4.2.4.5-1.png",
+    "w": 1136,
+    "h": 444
+  },
+  {
+    "fid": "6.4.2.5.3-1",
+    "title": "The limits for EVM equalizer spectral flatness with the maximum allowed variation.",
+    "printed": 1020,
+    "pdf_page": 1021,
+    "file": "6.4.2.5.3-1.png",
+    "w": 1137,
+    "h": 475
+  },
+  {
+    "fid": "6.4.2.5.5-1",
+    "title": "The limits for EVM equalizer spectral flatness with the maximum allowed variation.",
+    "printed": 1022,
+    "pdf_page": 1023,
+    "file": "6.4.2.5.5-1.png",
+    "w": 1137,
+    "h": 523
+  },
+  {
+    "fid": "6.5.0-1",
+    "title": "Transmitter RF spectrum",
+    "printed": 1149,
+    "pdf_page": 1150,
+    "file": "6.5.0-1.png",
+    "w": 1006,
+    "h": 380
+  }
+]

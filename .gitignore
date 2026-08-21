@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+.venv/
+uxm.db
+uxm_ui.pid
+out/
+generated/
+*.tmp
+
+# DUT / gold reports stay local
+*.csv
+*.xlsx
+*.xls
+FN990B Module Test Report/
+
+# 3GPP reference PDFs stay local (curated tables/figures live in uxm_report/)
+3GPP SPEC/
+*.pdf
