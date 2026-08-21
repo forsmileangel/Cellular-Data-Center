@@ -40,6 +40,15 @@ class WebPageTests(unittest.TestCase):
         self.assertIn("Ctrl+Shift+D", html)
         self.assertNotIn("Ctrl+T", html)
 
+    def test_db_index_export_uses_file_checkboxes(self):
+        from uxm_report.catalog import index_page
+        from uxm_report.store import Store
+
+        html = index_page(Store(":memory:"))
+        self.assertIn("exportSid", html)
+        self.assertIn("selectedExportIds", html)
+        self.assertIn("請至少勾選一個檔", html)
+
     def test_catalog_payload_lists_module_projects(self):
         from uxm_report.store import Store
         from uxm_report.web import catalog_payload

@@ -119,11 +119,10 @@ def index_page(
             + "</tbody>"
         )
     file_rows = []
-    ids = []
     for s in rows:
-        ids.append(str(s["id"]))
         file_rows.append(
             "<tr>"
+            f"<td><input type=\"checkbox\" name=\"exportSid\" value=\"{s['id']}\" checked></td>"
             f"<td>{escape(s.get('module') or '')}</td>"
             f"<td>{escape(s.get('project') or '')}</td>"
             f"<td>{escape(s.get('data_folder') or '')}</td>"
@@ -143,22 +142,26 @@ def index_page(
   <label>資料夾 {_sel("data_folder", data_folder, folders, "全部資料夾")}</label>
   <label>IMEI {_sel("imei", imei, imeis, "全部 IMEI")}</label>
 </form>
-<p class="muted">{len(rows)} 個檔符合目前篩選。</p>
+<p class="muted">{len(rows)} 個檔符合目前篩選。預設全勾，可勾掉不要進報告的檔。</p>
+
+<h2>符合的檔</h2>
+<p class="row">
+  <button type="button" class="secondary" id="fileAll">全選檔</button>
+  <button type="button" class="secondary" id="fileNone">全不選</button>
+</p>
+<table>
+<tr><th></th><th>模組</th><th>專案</th><th>資料夾</th><th>IMEI</th><th>檔名</th><th>Band</th><th>Overall</th></tr>
+{''.join(file_rows) or '<tr><td colspan="8">沒有檔案。</td></tr>'}
+</table>
 
 <h2>依Band產出Excel Report</h2>
-<p class="muted">band 列表只含上面篩出的檔。connection test 仍會列入，Excel 會獨立標註。</p>
+<p class="muted">只會用上面仍勾選的檔。band 列表來自目前篩選；勾掉檔之後，沒有資料的 band 不會進 Excel。</p>
 <table>
 <thead><tr><th>Band</th><th>檔數</th></tr></thead>
 {''.join(band_blocks) or '<tbody><tr><td colspan="2">沒有資料。請先匯入或放寬篩選。</td></tr></tbody>'}
 </table>
 <p style="margin-top:12px"><button type="button" id="exportBands">依Band產出Excel Report</button></p>
 <div id="status"></div>
-
-<h2>符合的檔</h2>
-<table>
-<tr><th>模組</th><th>專案</th><th>資料夾</th><th>IMEI</th><th>檔名</th><th>Band</th><th>Overall</th></tr>
-{''.join(file_rows) or '<tr><td colspan="7">沒有檔案。</td></tr>'}
-</table>
 
 <h2>模組</h2>
 <p class="row">
@@ -177,9 +180,15 @@ def index_page(
 .card p {{ margin:0 0 8px; color:#666; font-size:13px; }}
 </style>
 <script>
-const sessionIds = {ids!r};
 const moduleName = {module!r};
 const projectName = {project!r};
+function selectedExportIds() {{
+  return Array.from(document.querySelectorAll('input[name=exportSid]:checked')).map((el) => Number(el.value));
+}}
+const fileAll = document.getElementById("fileAll");
+const fileNone = document.getElementById("fileNone");
+if (fileAll) fileAll.onclick = () => document.querySelectorAll('input[name=exportSid]').forEach((el) => {{ el.checked = true; }});
+if (fileNone) fileNone.onclick = () => document.querySelectorAll('input[name=exportSid]').forEach((el) => {{ el.checked = false; }});
 document.getElementById("addModule").onclick = async () => {{
   const name = document.getElementById("newModule").value.trim();
   if (!name) {{ alert("請輸入新模組型號"); return; }}
@@ -194,15 +203,16 @@ document.getElementById("addModule").onclick = async () => {{
 }};
 document.getElementById("exportBands").onclick = async () => {{
   const bands = Array.from(document.querySelectorAll("input[name=band]:checked")).map((el) => el.value);
+  const ids = selectedExportIds();
   const status = document.getElementById("status");
+  if (!ids.length) {{ status.textContent = "請至少勾選一個檔"; status.className="err"; return; }}
   if (!bands.length) {{ status.textContent = "請至少選一個 band"; status.className="err"; return; }}
-  if (!sessionIds.length) {{ status.textContent = "目前篩選沒有檔"; status.className="err"; return; }}
   status.className = "";
   status.textContent = "從資料庫產生 Excel Report…";
   const r = await fetch("/api/report", {{
     method: "POST",
     headers: {{"Content-Type": "application/json"}},
-    body: JSON.stringify({{module: moduleName, project: projectName, bands, ids: sessionIds.map(Number)}})
+    body: JSON.stringify({{module: moduleName, project: projectName, bands, ids}})
   }});
   if (!r.ok) {{
     const j = await r.json().catch(() => ({{error:"失敗"}}));
