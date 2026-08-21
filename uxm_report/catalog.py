@@ -599,10 +599,22 @@ def _charts_panel(
             sel = " selected" if b == band else ""
             band_opt_html.append(f'<option value="{escape(b)}"{sel}>{escape(b)}</option>')
         band_opt_html.append("</optgroup>")
-    chart_opts = "".join(
-        f'<option value="{escape(c["id"])}"{" selected" if c["id"] == spec["id"] else ""}>{escape(c["title"])}</option>'
-        for c in CHARTS
-    )
+    chart_opts = []
+    last_group = None
+    for c in CHARTS:
+        group = c.get("group") or c.get("spec") or ""
+        if group != last_group:
+            if last_group is not None:
+                chart_opts.append("</optgroup>")
+            chart_opts.append(f'<optgroup label="{escape(group)}">')
+            last_group = group
+        sel = " selected" if c["id"] == spec["id"] else ""
+        chart_opts.append(
+            f'<option value="{escape(c["id"])}"{sel}>{escape(c["title"])}</option>'
+        )
+    if last_group is not None:
+        chart_opts.append("</optgroup>")
+    chart_opts = "".join(chart_opts)
     hidden = (
         f'<input type="hidden" name="module" value="{escape(module)}">'
         f'<input type="hidden" name="tab" value="charts">'

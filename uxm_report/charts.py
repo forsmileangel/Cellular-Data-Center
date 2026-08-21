@@ -7,48 +7,51 @@ from html import escape
 
 from .analysis import limit_float, to_float
 
-# First-wave plots: one Item, numeric limits, maps to 38.521-1.
+def _c(cid, group, title, spec, test_like, item, ylabel):
+    return {
+        "id": cid,
+        "group": group,
+        "title": title,
+        "spec": spec,
+        "test_like": test_like,
+        "item": item,
+        "ylabel": ylabel,
+    }
+
+
+# One Item per chart, numeric limits. Grouped by clause in the UI.
+# Do not add *WorstMargin / derived margin items.
 CHARTS = [
-    {
-        "id": "621-power",
-        "title": "6.2.1 UE Maximum Output Power",
-        "spec": "TS 38.521-1 6.2.1",
-        "test_like": "6.2.1%",
-        "item": "NR Power",
-        "ylabel": "NR Power (dBm)",
-    },
-    {
-        "id": "6421-evm",
-        "title": "6.4.2.1 PUSCH EVM",
-        "spec": "TS 38.521-1 6.4.2.1",
-        "test_like": "%PUSCH Error Vector Magnitude%",
-        "item": "PUSCH EVM",
-        "ylabel": "PUSCH EVM (%)",
-    },
-    {
-        "id": "641-ferr",
-        "title": "6.4.1 Frequency error",
-        "spec": "TS 38.521-1 6.4.1",
-        "test_like": "6.4.1%",
-        "item": "Freq Error in Hz",
-        "ylabel": "Freq Error (Hz)",
-    },
-    {
-        "id": "65241-aclr-l",
-        "title": "6.5.2.4.1 NR ACLR Offset L",
-        "spec": "TS 38.521-1 6.5.2.4.1",
-        "test_like": "%6.5.2.4.1%",
-        "item": "NR Offset L",
-        "ylabel": "NR ACLR Offset L (dB)",
-    },
-    {
-        "id": "65241-aclr-u",
-        "title": "6.5.2.4.1 NR ACLR Offset U",
-        "spec": "TS 38.521-1 6.5.2.4.1",
-        "test_like": "%6.5.2.4.1%",
-        "item": "NR Offset U",
-        "ylabel": "NR ACLR Offset U (dB)",
-    },
+    _c("621-power", "6.2 發射功率", "6.2.1 UE Maximum Output Power", "TS 38.521-1 6.2.1", "6.2.1%", "NR Power", "NR Power (dBm)"),
+    _c("622-power", "6.2 發射功率", "6.2.2 MPR (NR Power)", "TS 38.521-1 6.2.2", "6.2.2%", "NR Power", "NR Power (dBm)"),
+    _c("623-power", "6.2 發射功率", "6.2.3 A-MPR (NR Power)", "TS 38.521-1 6.2.3", "6.2.3%", "NR Power", "NR Power (dBm)"),
+    _c("624-power", "6.2 發射功率", "6.2.4 Configured power (NR Power)", "TS 38.521-1 6.2.4", "6.2.4%", "NR Power", "NR Power (dBm)"),
+    _c("631-power", "6.3 輸出功率動態", "6.3.1 Minimum Output Power", "TS 38.521-1 6.3.1", "6.3.1%", "NR Power", "NR Power (dBm)"),
+    _c("6334-on", "6.3 輸出功率動態", "6.3.3.4 PRACH On Power after", "TS 38.521-1 6.3.3.4", "6.3.3.4%", "PRACH On Power after", "PRACH On (dBm)"),
+    _c("6334-off-b", "6.3 輸出功率動態", "6.3.3.4 PRACH OFF Power before", "TS 38.521-1 6.3.3.4", "6.3.3.4%", "PRACH OFF Power before", "PRACH OFF (dBm)"),
+    _c("6334-off-a", "6.3 輸出功率動態", "6.3.3.4 PRACH OFF Power after", "TS 38.521-1 6.3.3.4", "6.3.3.4%", "PRACH OFF Power after", "PRACH OFF (dBm)"),
+    _c("641-ferr", "6.4 發射訊號品質", "6.4.1 Frequency error", "TS 38.521-1 6.4.1", "6.4.1%", "Freq Error in Hz", "Freq Error (Hz)"),
+    _c("6421-evm", "6.4 發射訊號品質", "6.4.2.1 PUSCH EVM", "TS 38.521-1 6.4.2.1", "%PUSCH Error Vector Magnitude%", "PUSCH EVM", "PUSCH EVM (%)"),
+    _c("6421-dmrs", "6.4 發射訊號品質", "6.4.2.1 PUSCH DMRS EVM", "TS 38.521-1 6.4.2.1", "%PUSCH Error Vector Magnitude%", "PUSCH DMRS EVM", "PUSCH DMRS EVM (%)"),
+    _c("6421-pucch", "6.4 發射訊號品質", "6.4.2.1 PUCCH EVM", "TS 38.521-1 6.4.2.1", "%PUCCH Error Vector Magnitude%", "PUCCH EVM", "PUCCH EVM (%)"),
+    _c("6422-leak", "6.4 發射訊號品質", "6.4.2.2 Carrier leakage", "TS 38.521-1 6.4.2.2", "%Carrier leakage%", "Carrier Leakage", "Carrier leakage (dBc)"),
+    _c("651-obw", "6.5 輸出 RF 頻譜", "6.5.1 Occupied bandwidth", "TS 38.521-1 6.5.1", "6.5.1%", "OBW", "OBW (MHz)"),
+    _c("6522-al", "6.5 輸出 RF 頻譜", "6.5.2.2 SEM Offset A L", "TS 38.521-1 6.5.2.2", "%Spectrum Emission Mask%", "OffsetA L", "Offset A L (dB)"),
+    _c("6522-au", "6.5 輸出 RF 頻譜", "6.5.2.2 SEM Offset A U", "TS 38.521-1 6.5.2.2", "%Spectrum Emission Mask%", "OffsetA U", "Offset A U (dB)"),
+    _c("6522-bl", "6.5 輸出 RF 頻譜", "6.5.2.2 SEM Offset B L", "TS 38.521-1 6.5.2.2", "%Spectrum Emission Mask%", "OffsetB L", "Offset B L (dB)"),
+    _c("6522-bu", "6.5 輸出 RF 頻譜", "6.5.2.2 SEM Offset B U", "TS 38.521-1 6.5.2.2", "%Spectrum Emission Mask%", "OffsetB U", "Offset B U (dB)"),
+    _c("6522-cl", "6.5 輸出 RF 頻譜", "6.5.2.2 SEM Offset C L", "TS 38.521-1 6.5.2.2", "%Spectrum Emission Mask%", "OffsetC L", "Offset C L (dB)"),
+    _c("6522-cu", "6.5 輸出 RF 頻譜", "6.5.2.2 SEM Offset C U", "TS 38.521-1 6.5.2.2", "%Spectrum Emission Mask%", "OffsetC U", "Offset C U (dB)"),
+    _c("6522-dl", "6.5 輸出 RF 頻譜", "6.5.2.2 SEM Offset D L", "TS 38.521-1 6.5.2.2", "%Spectrum Emission Mask%", "OffsetD L", "Offset D L (dB)"),
+    _c("6522-du", "6.5 輸出 RF 頻譜", "6.5.2.2 SEM Offset D U", "TS 38.521-1 6.5.2.2", "%Spectrum Emission Mask%", "OffsetD U", "Offset D U (dB)"),
+    _c("65241-aclr-l", "6.5 輸出 RF 頻譜", "6.5.2.4 NR ACLR Offset L", "TS 38.521-1 6.5.2.4", "%6.5.2.4%", "NR Offset L", "NR ACLR Offset L (dB)"),
+    _c("65241-aclr-u", "6.5 輸出 RF 頻譜", "6.5.2.4 NR ACLR Offset U", "TS 38.521-1 6.5.2.4", "%6.5.2.4%", "NR Offset U", "NR ACLR Offset U (dB)"),
+    _c("6524-utra-al", "6.5 輸出 RF 頻譜", "6.5.2.4 UTRA Offset A L", "TS 38.521-1 6.5.2.4", "%6.5.2.4%", "UTRA OffsetA L", "UTRA Offset A L (dB)"),
+    _c("6524-utra-au", "6.5 輸出 RF 頻譜", "6.5.2.4 UTRA Offset A U", "TS 38.521-1 6.5.2.4", "%6.5.2.4%", "UTRA OffsetA U", "UTRA Offset A U (dB)"),
+    _c("6524-utra-bl", "6.5 輸出 RF 頻譜", "6.5.2.4 UTRA Offset B L", "TS 38.521-1 6.5.2.4", "%6.5.2.4%", "UTRA OffsetB L", "UTRA Offset B L (dB)"),
+    _c("6524-utra-bu", "6.5 輸出 RF 頻譜", "6.5.2.4 UTRA Offset B U", "TS 38.521-1 6.5.2.4", "%6.5.2.4%", "UTRA OffsetB U", "UTRA Offset B U (dB)"),
+    _c("732-bler", "7 接收", "7.3.2 Reference sensitivity (BLER)", "TS 38.521-1 7.3.2", "7.3.2%", "BLER", "BLER"),
+    _c("74-power", "7 接收", "7.4 Maximum input (Power)", "TS 38.521-1 7.4", "7.4%", "Power", "Power (dBm)"),
 ]
 
 RANGE_X = {"Low": 0, "Mid": 1, "High": 2}
