@@ -6,7 +6,7 @@ import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
 
-from .parse import Session, TestMode, bw_mhz
+from .parse import Session, TestMode, bw_mhz, is_connection_test
 from .spec import RANGES, classify_channels
 
 RANGE_ORDER = {name: i for i, name in enumerate(RANGES)}
@@ -58,6 +58,7 @@ class FileColumn:
     fail_items: str
     ta_version: str
     rfa_version: str
+    note: str = ""
 
 
 @dataclass
@@ -107,8 +108,12 @@ def _build_column(index: int, session: Session, mode: TestMode) -> FileColumn:
         seen.add(key)
         fail_lines.append(f" {name}_{rng}")
     total = sum(r.time_s for r in mode.rows)
+    note = ""
+    if is_connection_test(session.filename, session.header.get("TestPlan", "")):
+        note = "connection test"
+    label = f"File {index} ({note})" if note else f"File {index}"
     return FileColumn(
-        file_label=f"File {index}",
+        file_label=label,
         filename=session.filename,
         session=session,
         mode=mode,
@@ -119,6 +124,7 @@ def _build_column(index: int, session: Session, mode: TestMode) -> FileColumn:
         fail_items="\n".join(fail_lines),
         ta_version=session.header.get("TA Version", ""),
         rfa_version=session.header.get("RFA Version", ""),
+        note=note,
     )
 
 
@@ -189,7 +195,7 @@ def build_report(
                 col.summary,
                 col.fail_items or None,
                 col.file_label,
-                None,
+                col.note or None,
             ]
         )
 

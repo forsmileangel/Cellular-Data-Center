@@ -16,6 +16,7 @@ class Fn990bAggregateTests(unittest.TestCase):
 
     def test_file_count_and_order(self):
         self.assertEqual(len(self.model.columns), 16)
+        self.assertEqual(self.model.columns[0].file_label, "File 1")
         self.assertTrue(self.model.columns[0].filename.startswith("351138790009917_Full Test N41"))
         self.assertTrue(self.model.columns[15].filename.startswith("351138790009917_N8_Full Test"))
 

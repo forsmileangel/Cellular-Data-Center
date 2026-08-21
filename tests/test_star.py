@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 
 from uxm_report.aggregate import build_report, star_result
-from uxm_report.parse import Session, TestMode, TestRow
+from uxm_report.parse import Session, TestMode, TestRow, is_connection_test, plan_label
 
 
 class StarResultTests(unittest.TestCase):
@@ -61,12 +61,31 @@ class FileNumberTests(unittest.TestCase):
             ],
         )
         model = build_report([one, conn], "FN990", "demo")
-        self.assertEqual([c.file_label for c in model.columns], ["File 1", "File 2", "File 2"])
+        self.assertEqual(
+            [c.file_label for c in model.columns],
+            ["File 1", "File 2 (connection test)", "File 2 (connection test)"],
+        )
         self.assertEqual([c.mode.display_band for c in model.columns], ["NR_n1", "NR_n1", "NR_n28"])
         self.assertEqual(
             [row[0] for row in model.file_rows[1:]],
-            ["File 1", "File 2"],
+            ["File 1", "File 2 (connection test)"],
         )
+        self.assertEqual(model.overall_rows[2][4], "File 2 (connection test)")
+        self.assertEqual(model.overall_rows[2][5], "connection test")
+        self.assertIsNone(model.overall_rows[1][5])
+
+
+class PlanLabelTests(unittest.TestCase):
+    def test_connection_and_full(self):
+        self.assertTrue(is_connection_test("3599_connection_test_2022_Pass.pdf"))
+        self.assertTrue(is_connection_test("x.csv", "connection test"))
+        self.assertFalse(is_connection_test("Full Test N1_Fail.pdf"))
+        self.assertEqual(plan_label("3599_Full Test N1_Fail.pdf"), "Full Test N1")
+        self.assertEqual(
+            plan_label("3599_connection_test_2022_Pass.pdf"),
+            "connection test",
+        )
+        self.assertEqual(plan_label("N1_Full_Test.csv"), "Full Test")
 
 
 if __name__ == "__main__":

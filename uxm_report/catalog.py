@@ -9,6 +9,7 @@ from urllib.parse import quote
 from .charts import CHARTS, svg_lmh
 from .review import _page, _vclass, site_nav
 from .spec import NR_RANGE_ORDER, nr_range_class
+from .parse import plan_label
 from .store import Store
 
 
@@ -167,13 +168,21 @@ def project_page(store: Store, module: str, project: str) -> str:
             files = by_band[band]
             rats = {_rat_label(f.get("rat") or "", band) for f in files}
             kinds = {f.get("report_kind") or "uxm" for f in files}
+            sources: list[str] = []
+            for f in files:
+                lab = plan_label(f.get("filename") or "", f.get("test_plan") or "")
+                if lab and lab not in sources:
+                    sources.append(lab)
+            ntxt = str(len(files))
+            if sources:
+                ntxt = f"{len(files)}（{', '.join(sources)}）"
             rows_html.append(
                 "<tr>"
                 f"<td><label><input type=\"checkbox\" name=\"band\" value=\"{escape(band)}\" "
                 f"data-range=\"{escape(cls)}\" checked> {escape(band)}</label></td>"
                 f"<td>{escape(', '.join(sorted(rats)))}</td>"
                 f"<td>{escape(', '.join(sorted(kinds))).upper()}</td>"
-                f"<td>{len(files)}</td>"
+                f"<td>{escape(ntxt)}</td>"
                 "</tr>"
             )
         band_blocks.append(
@@ -222,7 +231,7 @@ def project_page(store: Store, module: str, project: str) -> str:
 <p class="muted">會刪除此專案底下全部已匯入 session，不會刪磁碟 CSV。</p>
 
 <h2>依 band 產出 UXM Excel</h2>
-<p class="muted">勾選要進報告的 band。同一 band 若有多次量測（含重測）都會列入，檔名排序與匯入時相同。Excel 的 File N 是一份報告檔；同一檔若有多個 band（例如 connection_test）會共用同一個 File 編號，用 Band 欄區分。</p>
+<p class="muted">勾選要進報告的 band。同一 band 若有多次量測（含重測）都會列入。檔數會標 Full Test 或 connection test；connection test 會進 Excel，並在 File／Note 獨立標出，不是完整 RF。</p>
 <p><label><input type="checkbox" id="groupBands" checked> 依 NR 低／中／高／超高頻分組</label>
 <span class="muted">（Low &lt;1 GHz、Mid 1–2.2 GHz、High ≥2.2 GHz 含 n78/n79、Ultra-high 僅 FR2）</span></p>
 <table>

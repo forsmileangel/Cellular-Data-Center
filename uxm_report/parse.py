@@ -223,6 +223,25 @@ def ta_major(version: str) -> str:
     return m.group(1) if m else ""
 
 
+CONN_TEST_RE = re.compile(r"connection[_\s-]?test", re.I)
+
+
+def is_connection_test(filename: str, test_plan: str = "") -> bool:
+    return bool(CONN_TEST_RE.search(f"{test_plan} {filename}"))
+
+
+def plan_label(filename: str, test_plan: str = "") -> str:
+    blob = f"{test_plan} {filename}"
+    if CONN_TEST_RE.search(blob):
+        return "connection test"
+    m = re.search(r"Full Test\s+N?\d+", blob, re.I)
+    if m:
+        return m.group(0)
+    if re.search(r"full[_\s-]?test", blob, re.I):
+        return "Full Test"
+    return (test_plan or "").strip()
+
+
 def _is_session_file(path: Path) -> bool:
     if path.name.lower().startswith("bandcombinations"):
         return False
