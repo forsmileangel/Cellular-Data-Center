@@ -755,7 +755,7 @@ def _charts_panel(
 <div class="note">
 圖跟報告用同一組篩選（模組／專案／資料夾／IMEI，可複選比較）。一次一個 band、一個測項。
 這次查到 {len(rows)} 列；目前精確條件組 {len(selected_rows)} 列、{ms:.0f} ms。系統不平均不同 LSL／USL。
-多個來源時用顏色區分。滑鼠移到點上可看量測值；點一下可把數值釘在圖上方便截圖。
+多個來源時用顏色區分。點一下資料點可把數值留在圖上。
 </div>
 <form method="get" action="/db/work" class="row">
   {hidden}

@@ -32,9 +32,8 @@ class ChartHelperTests(unittest.TestCase):
         self.assertIn("<svg", html)
         self.assertIn("LSL", html)
         self.assertIn("USL", html)
-        self.assertIn("data-tip", html)
-        self.assertIn("23", html)
-        self.assertIn("釘在圖上", html)
+        self.assertIn('data-tip="23"', html)
+        self.assertNotIn("LSL 20", html)
 
     def test_svg_refuses_to_average_different_limits(self):
         rows = [
@@ -95,11 +94,14 @@ class ChartHelperTests(unittest.TestCase):
             "dBm",
         )
         self.assertIn("<svg", html)
-        self.assertIn("data-tip", html)
+        self.assertIn('data-tip="23"', html)
+        self.assertIn('data-tip="24"', html)
         self.assertIn("IMEI-A", html)
         self.assertIn("IMEI-B", html)
         self.assertIn("#496b57", html)
         self.assertIn("#9a6c42", html)
+        self.assertNotIn('stroke="#222"', html)
+        self.assertNotIn("stroke-width", html)
 
     def test_plot_rows_overlays_two_imeis(self):
         from uxm_report.catalog import _plot_rows

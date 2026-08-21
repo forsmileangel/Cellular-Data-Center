@@ -71,69 +71,23 @@ _CHART_TIP_SCRIPT = r"""
   var hoverFor = null;
   var NS = "http://www.w3.org/2000/svg";
   function svgOf(el) { return el.ownerSVGElement || el; }
-  function measure(s) {
-    var w = 0;
-    for (var i = 0; i < s.length; i++) w += s.charCodeAt(i) > 127 ? 12 : 7;
-    return w;
-  }
   function makeLabel(svg, circle, text) {
-    var lines = String(text || "").split("\n");
-    var pad = 6, lineH = 14, tw = 40;
-    for (var i = 0; i < lines.length; i++) tw = Math.max(tw, measure(lines[i]));
-    var width = Math.min(300, tw + pad * 2);
-    var height = lines.length * lineH + pad * 2;
     var cx = Number(circle.getAttribute("cx") || 0);
     var cy = Number(circle.getAttribute("cy") || 0);
-    var vb = svg.viewBox && svg.viewBox.baseVal;
-    var maxW = vb && vb.width ? vb.width : 760;
-    var maxH = vb && vb.height ? vb.height : 300;
-    var x = cx + 10;
-    var y = cy - height - 6;
-    if (x + width > maxW - 4) x = Math.max(4, cx - width - 10);
-    if (y < 4) y = Math.min(maxH - height - 4, cy + 12);
-    var g = document.createElementNS(NS, "g");
-    g.setAttribute("class", "chart-callout");
-    var rect = document.createElementNS(NS, "rect");
-    rect.setAttribute("x", String(x));
-    rect.setAttribute("y", String(y));
-    rect.setAttribute("width", String(width));
-    rect.setAttribute("height", String(height));
-    rect.setAttribute("fill", "#fffdf9");
-    rect.setAttribute("stroke", "#393b38");
-    rect.setAttribute("rx", "3");
-    g.appendChild(rect);
-    for (var j = 0; j < lines.length; j++) {
-      var t = document.createElementNS(NS, "text");
-      t.setAttribute("x", String(x + pad));
-      t.setAttribute("y", String(y + pad + 11 + j * lineH));
-      t.setAttribute("font-size", "11");
-      t.setAttribute("fill", "#222");
-      t.textContent = lines[j];
-      g.appendChild(t);
-    }
-    svg.appendChild(g);
-    return g;
+    var t = document.createElementNS(NS, "text");
+    t.setAttribute("x", String(cx + 8));
+    t.setAttribute("y", String(cy < 18 ? cy + 16 : cy - 8));
+    t.setAttribute("font-size", "12");
+    t.setAttribute("font-weight", "700");
+    t.setAttribute("fill", circle.getAttribute("fill") || "#496b57");
+    t.textContent = text;
+    svg.appendChild(t);
+    return t;
   }
   function clearHover() {
     if (hover && hover.parentNode) hover.parentNode.removeChild(hover);
     hover = null;
     hoverFor = null;
-  }
-  function markPinned(circle, on) {
-    if (on) {
-      if (!circle.hasAttribute("data-pin-stroke")) {
-        circle.setAttribute("data-pin-stroke", circle.getAttribute("stroke") || "");
-        circle.setAttribute("data-pin-sw", circle.getAttribute("stroke-width") || "");
-        circle.setAttribute("data-pin-r", circle.getAttribute("r") || "3.5");
-      }
-      circle.setAttribute("stroke", "#222");
-      circle.setAttribute("stroke-width", "2");
-      circle.setAttribute("r", "5.5");
-    } else {
-      circle.setAttribute("stroke", circle.getAttribute("data-pin-stroke") || "none");
-      circle.setAttribute("stroke-width", circle.getAttribute("data-pin-sw") || "0");
-      circle.setAttribute("r", circle.getAttribute("data-pin-r") || "3.5");
-    }
   }
   document.addEventListener("mouseover", function (e) {
     var t = e.target;
@@ -155,12 +109,10 @@ _CHART_TIP_SCRIPT = r"""
       var g = pins.get(t);
       if (g && g.parentNode) g.parentNode.removeChild(g);
       pins.delete(t);
-      markPinned(t, false);
       return;
     }
     clearHover();
     pins.set(t, makeLabel(svgOf(t), t, t.getAttribute("data-tip")));
-    markPinned(t, true);
   });
 })();
 </script>
@@ -177,29 +129,10 @@ def _fmt_num(value) -> str:
 
 
 def _point_title(point: dict) -> str:
-    unit = (point.get("unit") or "").strip()
     raw = point.get("y")
-    value = f"{raw:.4g}" if isinstance(raw, (int, float)) else _fmt_num(raw)
-    line1 = "  ".join(
-        part for part in (point.get("lmh") or "", f"{value} {unit}".strip(), point.get("pf") or "") if part
-    )
-    line2 = f"LSL {_fmt_num(point.get('lsl'))} / USL {_fmt_num(point.get('usl'))}"
-    seen: list[str] = []
-    for part in (
-        point.get("label") or "",
-        point.get("imei") or "",
-        point.get("data_folder") or "",
-        point.get("project") or "",
-    ):
-        if part and part not in seen:
-            seen.append(part)
-    lines = [line1, line2]
-    if seen:
-        lines.append(" · ".join(seen))
-    filename = point.get("filename") or ""
-    if filename:
-        lines.append(filename)
-    return "\n".join(lines)
+    if isinstance(raw, (int, float)):
+        return f"{raw:.4g}"
+    return _fmt_num(raw)
 
 
 def _tip_attr(point: dict) -> str:
@@ -328,7 +261,7 @@ def svg_lmh(rows: list[dict], ylabel: str, width: int = 640, height: int = 260) 
     svg.append("</svg>")
     svg.append(
         f'<p class="muted">點數 {len(pts)}（綠=Pass，紅=Fail）。虛線是 3GPP 下限／上限。'
-        "滑鼠移到點上可看量測值；點一下可把數值釘在圖上方便截圖，再點一次取消。</p>"
+        "點一下顯示數值，再點一次取消。</p>"
     )
     svg.append(_CHART_TIP_SCRIPT)
     return "\n".join(svg)
@@ -406,11 +339,9 @@ def svg_comparison(
         jitter = ((counts[key] % 5) - 2) * 2
         y = _scale([point["y"]], top, bottom, lo, hi)[0]
         color = palette[point["series"] % len(palette)]
-        stroke = "#a14f43" if point["pf"] == "Fail" else "#fffdf9"
         svg.append(
             f'<circle cx="{xs[point["x"]] + offset + jitter}" cy="{y}" r="4" '
-            f'fill="{color}" stroke="{stroke}" stroke-width="1.5"'
-            f' data-tip="{_tip_attr(point)}"/>'
+            f'fill="{color}" data-tip="{_tip_attr(point)}"/>'
         )
     legend_x = left
     for index, (label, _rows) in enumerate(series):
@@ -420,8 +351,7 @@ def svg_comparison(
         legend_x += min(170, 24 + len(label) * 12)
     svg.append("</svg>")
     svg.append(
-        '<p class="muted">顏色代表來源；紅色外框代表該細節列由儀器標為 Fail。'
-        "滑鼠移到點上可看量測值；點一下可把數值釘在圖上方便截圖，再點一次取消。</p>"
+        '<p class="muted">顏色代表來源。點一下顯示數值，再點一次取消。</p>'
     )
     svg.append(_CHART_TIP_SCRIPT)
     return "\n".join(svg)

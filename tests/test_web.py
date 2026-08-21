@@ -87,7 +87,7 @@ class WebPageTests(unittest.TestCase):
         self.assertIn("套用篩選", html)
         self.assertIn("來源著色", html_c)
         self.assertIn('name="project"', html)
-        self.assertIn("釘在圖上", html_c)
+        self.assertIn("點一下資料點可把數值留在圖上", html_c)
 
     def test_catalog_payload_lists_module_projects(self):
         from uxm_report.store import Store
