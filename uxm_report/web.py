@@ -11,9 +11,15 @@ from urllib.parse import parse_qs, urlparse
 
 from .parse import list_report_files
 from .pipeline import run_build, run_ingest, run_report_from_db
-from .analysis_pages import analysis_index, analysis_module, analysis_session
+from .analysis_pages import (
+    analysis_compare,
+    analysis_index,
+    analysis_module,
+    analysis_session,
+    parse_analysis_filter,
+)
 from .catalog import index_page as db_index, work_page as db_work
-from .review import list_page, session_page, site_nav
+from .review import _page, list_page, session_page, site_nav
 from .spec_pages import spec_page
 from .store import Store
 from .ts38521_figures import ASSET_DIR as SPEC_FIG_DIR
@@ -25,7 +31,7 @@ HOME_PAGE = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cellular Specifications and Reporting Analysis Center</title>
+<title>UXM 測試報告工作台</title>
 <style>
   :root { --green:#008787; --ink:#222; --muted:#666; --line:#ccc; --bg:#f6f6f6; }
   * { box-sizing:border-box; }
@@ -52,8 +58,8 @@ HOME_PAGE = """<!DOCTYPE html>
   <a href="#" onclick="uxmShutdown();return false">關閉本地伺服器</a>
 </details>
 <main>
-  <h1>Cellular Specifications and Reporting Analysis Center</h1>
-  <p class="sub">選一個功能進入。</p>
+  <h1>UXM 測試報告工作台</h1>
+  <p class="sub">從報告匯入、資料分析到 3GPP 規格解讀，集中在同一個工作區。</p>
   <div class="home-cards">
     <a class="home-card" href="/import"><strong>報告匯入</strong><span>把 UXM CSV 放進測試資料庫，或順便出 Excel</span></a>
     <a class="home-card" href="/db"><strong>測試資料庫</strong><span>篩選後依 Band 產出 Excel Report</span></a>
@@ -130,6 +136,8 @@ NAV_SLOT
   <h1>報告匯入</h1>
   <p class="sub">把 CSV 放進庫。要出 Excel，也可在這裡做，或進資料庫：模組 → 專案 → 勾 band。</p>
 
+  <section class="import-step">
+  <div class="step-heading"><span>01</span><div><h2>歸檔資訊</h2><p>先決定資料要放在哪個模組、專案與測試資料夾。</p></div></div>
   <label>模組型號 <span class="req">*</span></label>
   <select id="modulePick">
     <option value="">（請選擇已有模組）</option>
@@ -161,7 +169,10 @@ NAV_SLOT
     <input id="dataFolderNew" type="text" placeholder="例如 TA17、TA20、e-test、pre-DVT">
   </div>
   <div class="hint">專案底下再分一層，避免 TA17／TA20 或 e-test／pre-DVT 混在一起。選既有或新增；空白則 UNKNOWN。</div>
+  </section>
 
+  <section class="import-step">
+  <div class="step-heading"><span>02</span><div><h2>選擇來源</h2><p>預覽後只勾選要寫入資料庫的報告。</p></div></div>
   <label>報告檔所在路徑 <span class="req">*</span></label>
   <div class="row">
     <input id="folder" type="text" placeholder="選擇或貼上本機資料夾路徑">
@@ -169,12 +180,16 @@ NAV_SLOT
   </div>
   <div class="hint">列出第一層 *.csv 與 *.pdf（略過 BandCombinations）。請勾選要進資料庫的檔；測錯留檔不要勾，以免汙染統計。PDF 沒有原 CSV 時會還原並標註折行／缺欄。</div>
   <div id="preview"></div>
+  </section>
 
+  <section class="import-step action-step">
+  <div class="step-heading"><span>03</span><div><h2>執行</h2><p>只匯入，或匯入後立即產生 Excel。</p></div></div>
   <p style="margin-top:22px">
     <button type="button" id="ingest">只匯入選取檔</button>
     <button type="button" id="build">匯入並產生 Excel</button>
   </p>
   <div id="status"></div>
+  </section>
 
   <details>
     <summary>Result 星號怎麼標</summary>
@@ -433,6 +448,21 @@ async function uxmShutdown() {
 """
 
 
+def _adopt_shared_shell(document: str, title: str, current: str) -> str:
+    """Keep the import JavaScript while using the same active shell/CSS as every page."""
+    start = document.index("<main>") + len("<main>")
+    end = document.index("</main>", start)
+    close = document.rindex("</body>")
+    body = document[start:end]
+    scripts = document[end + len("</main>") : close]
+    nav = "" if "NAV_SLOT" in body else site_nav(current)
+    return _page(title, nav + body + scripts)
+
+
+HOME_PAGE = _adopt_shared_shell(HOME_PAGE, "首頁", "首頁")
+PAGE = _adopt_shared_shell(PAGE, "報告匯入", "報告匯入")
+
+
 def catalog_payload(store: Store) -> dict:
     modules = []
     for m in store.list_modules():
@@ -526,6 +556,7 @@ class Handler(BaseHTTPRequestHandler):
                 tab = "report"
             band = (qs.get("band") or [""])[0]
             chart = (qs.get("chart") or ["621-power"])[0]
+            chart_group = (qs.get("group") or [""])[0]
             store = Store(ROOT / "uxm.db")
             try:
                 html = db_work(
@@ -537,6 +568,7 @@ class Handler(BaseHTTPRequestHandler):
                     tab,
                     band,
                     chart,
+                    chart_group,
                 )
             finally:
                 store.close()
@@ -623,9 +655,10 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(raw)
             return
         if parsed.path == "/analysis":
+            qs = parse_qs(parsed.query)
             store = Store(ROOT / "uxm.db")
             try:
-                html = analysis_index(store)
+                html = analysis_index(store, parse_analysis_filter(qs))
             finally:
                 store.close()
             raw = html.encode("utf-8")
@@ -657,14 +690,49 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(raw)
             return
-        if parsed.path == "/analysis/session":
+        if parsed.path in ("/analysis/session", "/analysis/detail"):
+            qs = parse_qs(parsed.query)
             try:
-                sid = int((parse_qs(parsed.query).get("id") or ["0"])[0])
+                sid = int((qs.get("id") or ["0"])[0])
             except ValueError:
                 sid = 0
+            try:
+                page = int((qs.get("page") or ["1"])[0])
+            except ValueError:
+                page = 1
             store = Store(ROOT / "uxm.db")
             try:
-                html = analysis_session(store, sid)
+                html = analysis_session(
+                    store,
+                    sid,
+                    clause=(qs.get("clause") or [""])[0],
+                    test_name=(qs.get("test") or [""])[0],
+                    lmh=(qs.get("lmh") or [""])[0],
+                    group_token=(qs.get("group") or [""])[0],
+                    page=page,
+                )
+            finally:
+                store.close()
+            raw = html.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
+        if parsed.path == "/analysis/compare":
+            qs = parse_qs(parsed.query)
+            filters = parse_analysis_filter(qs)
+            store = Store(ROOT / "uxm.db")
+            try:
+                html = analysis_compare(
+                    store,
+                    filters,
+                    test_name=(qs.get("test") or [""])[0],
+                    band=(qs.get("band") or [""])[0],
+                    lmh=(qs.get("lmh") or [""])[0],
+                    group_token=(qs.get("group") or [""])[0],
+                )
             finally:
                 store.close()
             raw = html.encode("utf-8")

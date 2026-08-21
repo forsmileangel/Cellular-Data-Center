@@ -6,6 +6,7 @@ from collections import defaultdict
 from html import escape
 from urllib.parse import urlencode
 
+from .analysis import MeasurementGroup, measurement_group_from_row
 from .charts import CHARTS, svg_lmh
 from .review import _page, _vclass, site_nav
 from .spec import NR_RANGE_ORDER, nr_range_class
@@ -58,7 +59,7 @@ def _tabs(
         ".tabs { margin:12px 0 18px; }"
         ".tab { display:inline-block; padding:6px 14px; border:1px solid #ccc; "
         "margin-right:6px; text-decoration:none; color:#222; }"
-        ".tab.on { background:#008787; color:#fff; border-color:#008787; }"
+        ".tab.on { background:var(--green-deep); color:#fff; border-color:var(--green-deep); }"
         "</style>"
     )
 
@@ -178,8 +179,8 @@ def index_page(store: Store, **_unused) -> str:
 <style>
 .cards {{ display:flex; flex-wrap:wrap; gap:12px; margin-top:16px; }}
 .card {{ display:block; min-width:220px; padding:16px 18px; border:1px solid #ccc; text-decoration:none; color:#222; }}
-.card:hover {{ border-color:#008787; }}
-.card h2 {{ margin:0 0 6px; font-size:18px; color:#008787; }}
+.card:hover {{ border-color:#afbeaf; }}
+.card h2 {{ margin:0 0 6px; font-size:18px; color:var(--green-deep); }}
 .card p {{ margin:0; color:#666; font-size:13px; }}
 </style>
 <script>
@@ -222,6 +223,7 @@ def work_page(
     tab: str = "report",
     band: str = "",
     chart_id: str = "",
+    chart_group: str = "",
 ) -> str:
     module = _resolve_module(store, module, imei)
     if not module:
@@ -257,7 +259,17 @@ def work_page(
 </form>
 """
     if tab == "charts":
-        inner = _charts_panel(store, module, project, data_folder, imei, band, chart_id, rows)
+        inner = _charts_panel(
+            store,
+            module,
+            project,
+            data_folder,
+            imei,
+            band,
+            chart_id,
+            chart_group,
+            rows,
+        )
     else:
         inner = _report_panel(store, module, project, data_folder, imei, rows)
     body = f"""
@@ -506,6 +518,7 @@ def _charts_panel(
     imei: str,
     band: str,
     chart_id: str,
+    chart_group: str,
     sessions: list[dict],
 ) -> str:
     import time
@@ -533,7 +546,46 @@ def _charts_panel(
         else []
     )
     ms = (time.perf_counter() - t0) * 1000
-    plot = svg_lmh(rows, spec["ylabel"]) if rows else '<p class="muted">這個 band 沒有此測項的數字。</p>'
+    buckets: dict[tuple[str, ...], list[dict]] = defaultdict(list)
+    templates: dict[tuple[str, ...], MeasurementGroup] = {}
+    for row in rows:
+        group = measurement_group_from_row(row)
+        buckets[group.signature].append(row)
+        templates[group.signature] = group
+    groups = [
+        MeasurementGroup(*signature, count=len(buckets[signature]))
+        for signature in sorted(buckets)
+    ]
+    requested = MeasurementGroup.from_token(chart_group) if chart_group else None
+    selected = next(
+        (group for group in groups if requested and group.signature == requested.signature),
+        groups[0] if groups else None,
+    )
+    selected_rows = buckets.get(selected.signature, []) if selected else []
+    plot = (
+        svg_lmh(selected_rows, spec["ylabel"])
+        if selected_rows
+        else '<p class="muted">這個 band 沒有此測項的數字。</p>'
+    )
+    group_opts = []
+    for group in groups:
+        context = " · ".join(
+            value
+            for value in (
+                group.bandwidth,
+                group.scs,
+                group.modulation,
+                group.rb,
+                group.condition,
+            )
+            if value
+        )
+        limits = f"[{group.lower_limit or '—'}, {group.upper_limit or '—'}] {group.unit}".strip()
+        label = f"{context or '一般條件'} · {limits} · {group.count} 筆"
+        selected_attr = " selected" if selected and group.signature == selected.signature else ""
+        group_opts.append(
+            f'<option value="{group.token}"{selected_attr}>{escape(label)}</option>'
+        )
     grouped_opts: dict[str, list[str]] = defaultdict(list)
     for b in bands:
         grouped_opts[nr_range_class(b)].append(b)
@@ -561,12 +613,13 @@ def _charts_panel(
     return f"""
 <div class="note">
 圖跟報告用同一組篩選（模組／專案／資料夾／IMEI）。一次一個 band、一個測項。
-這次 {len(rows)} 列、{ms:.0f} ms。
+這次查到 {len(rows)} 列；目前精確條件組 {len(selected_rows)} 列、{ms:.0f} ms。系統不平均不同 LSL／USL。
 </div>
 <form method="get" action="/db/work" class="row">
   {hidden}
   <label>Band <select name="band" onchange="this.form.submit()">{''.join(band_opt_html)}</select></label>
   <label>測項 <select name="chart" onchange="this.form.submit()">{chart_opts}</select></label>
+  <label>精確條件 <select name="group" onchange="this.form.submit()">{''.join(group_opts)}</select></label>
 </form>
 <h2>{escape(spec["title"])} <span class="muted">{escape(spec["spec"])} · {escape(band or "")}</span></h2>
 {plot}

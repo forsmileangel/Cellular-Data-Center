@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from .analysis import AnalysisCohort, MeasurementGroup, PAGE_SIZE, clause_of
 from .interpret import meaning_of, skip_note
 from .parse import Session, bw_mhz, session_rat, ta_major
 from .spec import classify_channels
@@ -457,13 +458,15 @@ class Store:
 
     def lineage_events(self, module: str | None = None) -> list[dict]:
         sql = """
-            SELECT s.id AS session_id, s.filename, s.start_time, dut.imei,
+            SELECT s.id AS session_id, s.filename, s.start_time, m.model, p.name,
+                   COALESCE(f.name,'UNKNOWN'), dut.imei,
                    t.test_name, t.band, t.lmh, t.channel, t.verdict
             FROM test_rows t
             JOIN sessions s ON s.id = t.session_id
             JOIN duts dut ON dut.id = s.dut_id
             JOIN projects p ON p.id = s.project_id
             JOIN modules m ON m.id = p.module_id
+            LEFT JOIN folders f ON f.id = s.folder_id
         """
         args: list = []
         if module:
@@ -475,6 +478,9 @@ class Store:
             "session_id",
             "filename",
             "start_time",
+            "module",
+            "project",
+            "data_folder",
             "imei",
             "test_name",
             "band",
@@ -672,6 +678,236 @@ class Store:
         )
         return [dict(zip(keys, r)) for r in rows]
 
+    def analysis_scopes(self, module: str) -> list[dict]:
+        """Project/folder cohorts, newest first, without reading detail_rows."""
+        rows = self.conn.execute(
+            """
+            SELECT p.name, COALESCE(f.name,'UNKNOWN'), COUNT(s.id),
+                   MAX(COALESCE(NULLIF(s.start_time,''), s.imported_at, ''))
+            FROM sessions s
+            JOIN projects p ON p.id=s.project_id
+            JOIN modules m ON m.id=p.module_id
+            LEFT JOIN folders f ON f.id=s.folder_id
+            WHERE m.model=?
+            GROUP BY p.id, p.name, f.id, f.name
+            ORDER BY 4 DESC, p.name, f.name
+            """,
+            (module,),
+        ).fetchall()
+        return [
+            {
+                "cohort": AnalysisCohort(row[0], row[1]),
+                "sessions": int(row[2] or 0),
+                "latest": row[3] or "",
+            }
+            for row in rows
+        ]
+
+    def analysis_events(
+        self,
+        module: str,
+        cohorts: tuple[AnalysisCohort, ...] = (),
+        imei: str = "",
+        band: str = "",
+        clause: str = "",
+    ) -> list[dict]:
+        """Summary Verdict rows used by the analysis overview.
+
+        This intentionally reads test_rows, not detail_rows.  Status filters are
+        applied by the caller after latest/history selection.
+        """
+        sql = """
+            SELECT s.id AS session_id, s.filename, s.start_time, m.model, p.name,
+                   COALESCE(f.name,'UNKNOWN'), dut.imei, t.test_name, t.band,
+                   t.scs, t.bw, t.lmh, t.channel, t.verdict, t.spec_ref,
+                   t.interpret_note
+            FROM test_rows t
+            JOIN sessions s ON s.id=t.session_id
+            JOIN projects p ON p.id=s.project_id
+            JOIN modules m ON m.id=p.module_id
+            JOIN duts dut ON dut.id=s.dut_id
+            LEFT JOIN folders f ON f.id=s.folder_id
+            WHERE m.model=?
+        """
+        args: list = [module]
+        if cohorts:
+            scope_sql = []
+            for cohort in cohorts:
+                scope_sql.append("(p.name=? AND COALESCE(f.name,'UNKNOWN')=?)")
+                args.extend((cohort.project, cohort.data_folder))
+            sql += " AND (" + " OR ".join(scope_sql) + ")"
+        if imei:
+            sql += " AND dut.imei=?"
+            args.append(imei)
+        if band:
+            sql += " AND t.band=?"
+            args.append(band)
+        if clause:
+            sql += " AND t.test_name LIKE ?"
+            args.append(clause + "%")
+        sql += " ORDER BY s.start_time, s.id, t.id"
+        rows = self.conn.execute(sql, args).fetchall()
+        keys = (
+            "session_id",
+            "filename",
+            "start_time",
+            "module",
+            "project",
+            "data_folder",
+            "imei",
+            "test_name",
+            "band",
+            "scs",
+            "bw",
+            "lmh",
+            "channel",
+            "verdict",
+            "spec_ref",
+            "interpret_note",
+        )
+        out = [dict(zip(keys, row)) for row in rows]
+        if clause:
+            out = [row for row in out if clause_of(row["test_name"]) == clause]
+        for row in out:
+            row["clause"] = clause_of(row["test_name"])
+        return out
+
+    def analysis_measurement_groups(
+        self,
+        session_id: int,
+        clause: str,
+    ) -> list[MeasurementGroup]:
+        """Exact detail groups available for one summary test/session."""
+        rows = self.conn.execute(
+            """
+            SELECT COALESCE(x.item,''), COALESCE(x.band,''),
+                   COALESCE(x.bandwidth,''), COALESCE(x.scs,''),
+                   COALESCE(x.modulation,''), COALESCE(x.rb,''),
+                   COALESCE(x.condition,''), COALESCE(x.unit,''),
+                   COALESCE(x.lower_limit,''), COALESCE(x.upper_limit,''),
+                   COUNT(*)
+            FROM detail_rows x
+            WHERE x.session_id=?
+              AND (x.test_case=? OR x.test_case LIKE ?)
+            GROUP BY COALESCE(x.item,''), COALESCE(x.band,''),
+                     COALESCE(x.bandwidth,''), COALESCE(x.scs,''),
+                     COALESCE(x.modulation,''), COALESCE(x.rb,''),
+                     COALESCE(x.condition,''), COALESCE(x.unit,''),
+                     COALESCE(x.lower_limit,''), COALESCE(x.upper_limit,'')
+            ORDER BY x.item, x.band, x.bandwidth, x.scs, x.modulation, x.rb,
+                     x.condition, x.unit, x.lower_limit, x.upper_limit
+            """,
+            (int(session_id), clause, clause + " %"),
+        ).fetchall()
+        return [
+            MeasurementGroup(
+                clause=clause,
+                item=row[0],
+                band=row[1],
+                bandwidth=row[2],
+                scs=row[3],
+                modulation=row[4],
+                rb=row[5],
+                condition=row[6],
+                unit=row[7],
+                lower_limit=row[8],
+                upper_limit=row[9],
+                count=int(row[10] or 0),
+            )
+            for row in rows
+        ]
+
+    def analysis_detail_page(
+        self,
+        session_id: int,
+        clause: str,
+        group: MeasurementGroup | None = None,
+        page: int = 1,
+        page_size: int = PAGE_SIZE,
+    ) -> tuple[list[dict], int, int]:
+        """Return at most 100 detail rows plus total and clamped page number."""
+        page_size = min(PAGE_SIZE, max(1, int(page_size or PAGE_SIZE)))
+        where = [
+            "x.session_id=?",
+            "(x.test_case=? OR x.test_case LIKE ?)",
+        ]
+        args: list = [int(session_id), clause, clause + " %"]
+        if group is not None:
+            fields = (
+                ("item", group.item),
+                ("band", group.band),
+                ("bandwidth", group.bandwidth),
+                ("scs", group.scs),
+                ("modulation", group.modulation),
+                ("rb", group.rb),
+                ("condition", group.condition),
+                ("unit", group.unit),
+                ("lower_limit", group.lower_limit),
+                ("upper_limit", group.upper_limit),
+            )
+            for field, value in fields:
+                where.append(f"COALESCE(x.{field},'')=?")
+                args.append(value)
+        where_sql = " AND ".join(where)
+        total = int(
+            self.conn.execute(
+                f"SELECT COUNT(*) FROM detail_rows x WHERE {where_sql}",
+                args,
+            ).fetchone()[0]
+        )
+        pages = max(1, (total + page_size - 1) // page_size)
+        page = min(max(1, int(page or 1)), pages)
+        rows = self.conn.execute(
+            f"""
+            SELECT x.id, s.id, s.filename, s.start_time, m.model, p.name,
+                   COALESCE(f.name,'UNKNOWN'), dut.imei,
+                   x.time, x.test_case, x.description, x.band, x.bandwidth,
+                   x.scs, x.arfcn, x.freq_mhz, x.expected_power, x.ofdm,
+                   x.modulation, x.rb, x.condition, x.item, x.lower_limit,
+                   x.value, x.upper_limit, x.unit, x.pf
+            FROM detail_rows x
+            JOIN sessions s ON s.id=x.session_id
+            JOIN projects p ON p.id=s.project_id
+            JOIN modules m ON m.id=p.module_id
+            JOIN duts dut ON dut.id=s.dut_id
+            LEFT JOIN folders f ON f.id=s.folder_id
+            WHERE {where_sql}
+            ORDER BY x.id
+            LIMIT ? OFFSET ?
+            """,
+            args + [page_size, (page - 1) * page_size],
+        ).fetchall()
+        keys = (
+            "detail_id",
+            "session_id",
+            "filename",
+            "start_time",
+            "module",
+            "project",
+            "data_folder",
+            "imei",
+            "time",
+            "test_case",
+            "description",
+            "band",
+            "bandwidth",
+            "scs",
+            "arfcn",
+            "freq_mhz",
+            "expected_power",
+            "ofdm",
+            "modulation",
+            "rb",
+            "condition",
+            "item",
+            "lower_limit",
+            "value",
+            "upper_limit",
+            "unit",
+            "pf",
+        )
+        return [dict(zip(keys, row)) for row in rows], total, page
+
     def list_modules(self) -> list[dict]:
         rows = self.conn.execute(
             """
@@ -824,13 +1060,14 @@ class Store:
         band_token: str,
         test_like: str,
         item: str,
-        limit: int = 800,
+        limit: int = 5000,
         data_folder: str = "",
         imei: str = "",
     ) -> list[dict]:
         """One test + one item. Optional project/folder/IMEI. Cap 800 points."""
         sql = """
             SELECT s.id, s.filename, s.start_time, x.test_case, x.item, x.band,
+                   x.bandwidth, x.scs, x.modulation, x.rb, x.condition,
                    x.arfcn, x.value, x.lower_limit, x.upper_limit, x.unit, x.pf
             FROM detail_rows x
             JOIN sessions s ON s.id = x.session_id
@@ -865,6 +1102,11 @@ class Store:
             "test_case",
             "item",
             "band",
+            "bandwidth",
+            "scs",
+            "modulation",
+            "rb",
+            "condition",
             "arfcn",
             "value",
             "lower_limit",
@@ -988,5 +1230,3 @@ class Store:
         self.conn.execute("DELETE FROM projects WHERE id=?", (pid,))
         self.conn.commit()
         return len(ids)
-
-

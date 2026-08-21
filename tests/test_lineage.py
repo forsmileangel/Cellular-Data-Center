@@ -3,7 +3,19 @@ import unittest
 from uxm_report.lineage import build_links, latest_verdict
 
 
-def ev(sid, name, lmh, verdict, start, imei="1", band="NR_n78", fn=""):
+def ev(
+    sid,
+    name,
+    lmh,
+    verdict,
+    start,
+    imei="1",
+    band="NR_n78",
+    fn="",
+    module="M1",
+    project="P1",
+    folder="TA17",
+):
     return {
         "session_id": sid,
         "test_name": name,
@@ -14,6 +26,9 @@ def ev(sid, name, lmh, verdict, start, imei="1", band="NR_n78", fn=""):
         "imei": imei,
         "band": band,
         "filename": fn or f"f{sid}.csv",
+        "module": module,
+        "project": project,
+        "data_folder": folder,
     }
 
 
@@ -39,5 +54,22 @@ class LineageTests(unittest.TestCase):
             ev(2, "6.2.2 MPR", "High", "Pass", "b"),
         ]
         latest = latest_verdict(events)
-        key = ("1", "NR_n78", "6.2.2 MPR", "High")
+        key = ("M1", "P1", "TA17", "1", "NR_n78", "6.2.2 MPR", "High")
         self.assertEqual(latest[key]["verdict"], "Pass")
+
+    def test_pass_in_other_folder_does_not_supersede_fail(self):
+        events = [
+            ev(1, "6.2.2 MPR", "High", "Fail", "a", folder="TA17"),
+            ev(2, "6.2.2 MPR", "High", "Pass", "b", folder="TA20"),
+        ]
+        links = build_links(events)
+        self.assertFalse(links[(1, "6.2.2 MPR", "High")].superseded)
+
+    def test_latest_keeps_project_and_folder_cohorts_separate(self):
+        events = [
+            ev(1, "6.2.2 MPR", "High", "Fail", "a", project="P1", folder="TA17"),
+            ev(2, "6.2.2 MPR", "High", "Pass", "b", project="P1", folder="TA20"),
+            ev(3, "6.2.2 MPR", "High", "Pass", "c", project="P2", folder="TA17"),
+        ]
+        latest = latest_verdict(events)
+        self.assertEqual(len(latest), 3)

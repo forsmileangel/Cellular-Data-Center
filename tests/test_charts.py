@@ -32,3 +32,32 @@ class ChartHelperTests(unittest.TestCase):
         self.assertIn("<svg", html)
         self.assertIn("LSL", html)
         self.assertIn("USL", html)
+
+    def test_svg_refuses_to_average_different_limits(self):
+        rows = [
+            {
+                "session_id": 1,
+                "arfcn": "385000",
+                "value": "2",
+                "lower_limit": "0",
+                "upper_limit": "3.5",
+                "pf": "Pass",
+                "lmh": "Low",
+            },
+            {
+                "session_id": 2,
+                "arfcn": "385000",
+                "value": "4",
+                "lower_limit": "0",
+                "upper_limit": "8",
+                "pf": "Pass",
+                "lmh": "Low",
+            },
+        ]
+        html = svg_lmh(rows, "%")
+        self.assertNotIn("<svg", html)
+        self.assertIn("不會平均限值", html)
+
+    def test_assign_lmh_preserves_explicit_summary_range(self):
+        rows = [{"session_id": 1, "arfcn": "385000", "lmh": "High"}]
+        self.assertEqual(assign_lmh(rows)[0]["lmh"], "High")

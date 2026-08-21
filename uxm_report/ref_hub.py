@@ -282,13 +282,13 @@ def _css() -> str:
 .fam-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; margin:18px 0; }
 .fam-card { display:block; padding:16px 16px 12px; border:1px solid #ccc; text-decoration:none;
   color:#222; background:#fff; min-height:168px; }
-.fam-card:hover { border-color:#008787; }
-.fam-card strong { display:block; color:#008787; font-size:16px; margin-bottom:4px; }
+.fam-card:hover { border-color:#afbeaf; }
+.fam-card strong { display:block; color:var(--green-deep); font-size:16px; margin-bottom:4px; }
 .fam-card .t { display:block; font-size:14px; margin:0 0 8px; }
 .fam-card .b { display:block; color:#666; font-size:12px; line-height:1.45; margin-bottom:8px; }
 .fam-card ul { margin:0; padding-left:1.1em; color:#444; font-size:12px; line-height:1.45; }
 .orig-sw { font-weight:normal; color:#666; font-size:13px; }
-.spec-orig { display:none; border-left:3px solid #008787; background:#f3faf9;
+.spec-orig { display:none; border-left:3px solid var(--green); background:var(--green-soft);
   padding:8px 12px; margin:12px 0; }
 .spec-orig pre { white-space:pre-wrap; font-family:Segoe UI, Microsoft JhengHei, sans-serif;
   font-size:13px; margin:8px 0 0; color:#222; }

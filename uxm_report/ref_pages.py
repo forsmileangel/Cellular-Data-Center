@@ -297,9 +297,9 @@ def _css() -> str:
 .ch-sw { margin:12px 0; }
 .ch-sw a { display:inline-block; margin:0 8px 0 0; padding:4px 10px; border:1px solid #ccc;
   text-decoration:none; color:#222; font-size:13px; }
-.ch-sw a.on { background:#008787; color:#fff; border-color:#008787; }
+.ch-sw a.on { background:var(--green-deep); color:#fff; border-color:var(--green-deep); }
 .orig-sw { font-weight:normal; color:#666; font-size:13px; margin-right:12px; }
-.spec-orig { display:none; border-left:3px solid #008787; background:#f3faf9;
+.spec-orig { display:none; border-left:3px solid var(--green); background:var(--green-soft);
   padding:8px 12px; margin:12px 0; }
 .spec-orig pre { white-space:pre-wrap; font-family:Segoe UI, Microsoft JhengHei, sans-serif;
   font-size:13px; margin:8px 0 0; color:#222; }
@@ -307,7 +307,7 @@ body:has(#showOrig:checked) .spec-orig { display:block; }
 .spec-tables { display:block; margin:16px 0; }
 .spec-tables table { font-size:12px; }
 .spec-tables caption, .spec-figs figcaption { text-align:left; font-weight:600;
-  padding:8px 0 4px; color:#008787; }
+  padding:8px 0 4px; color:var(--green-deep); }
 .spec-figs figure { margin:12px 0 20px; }
 .spec-figs .pdf-fig { display:block; max-width:100%; height:auto; border:1px solid #ddd; background:#fff; }
 .spec-prose { max-width:40em; margin:8px 0 16px; color:#222; }
@@ -315,19 +315,19 @@ body:has(#showOrig:checked) .spec-orig { display:block; }
 .spec-prose p:last-child { margin-bottom:0; }
 .spec-prose ul { margin:0 0 0.75em; padding-left:1.3em; line-height:1.75; }
 .spec-brief { color:#333; }
-.spec-detail { padding:10px 14px 12px; background:#f7fafa; border-left:3px solid #008787; }
+.spec-detail { padding:10px 14px 12px; background:var(--paper-soft); border-left:3px solid var(--green); }
 .sec { margin:22px 0 28px; padding-top:8px; border-top:1px solid #e5e5e5; }
 .sec h2 { font-size:18px; margin:0 0 6px; }
-.sec h2 a { text-decoration:none; color:#008787; }
+.sec h2 a { text-decoration:none; color:var(--green-deep); }
 .clause-list { list-style:none; padding:0; margin:8px 0 12px; }
 .clause-list li { margin:4px 0; line-height:1.45; }
 .clause-list a { text-decoration:none; }
 .clause-list code { font-size:13px; }
-.rfa { font-size:10px; color:#008787; border:1px solid #008787; padding:0 3px; margin-left:2px; }
+.rfa { font-size:10px; color:var(--green-deep); border:1px solid var(--green); padding:0 3px; margin-left:2px; }
 .fam { font-size:13px; color:#444; margin:12px 0 0; }
 .fam-list { margin-top:4px; }
 .suf { margin:12px 0 20px; font-size:13px; color:#444; }
-.suf summary { cursor:pointer; color:#008787; }
+.suf summary { cursor:pointer; color:var(--green-deep); }
 .kids { font-size:14px; }
 .guide-slot { margin:24px 0 8px; padding:10px 12px; border:1px dashed #bbb;
   color:#888; font-size:13px; background:#fafafa; }

@@ -139,23 +139,23 @@ aside {{ min-width:200px; max-width:240px; font-size:13px; }}
 .clause-nav {{ margin:0 0 12px; }}
 .clause-nav a {{ display:inline-block; margin:2px 4px 2px 0; padding:2px 6px;
   border:1px solid #ccc; text-decoration:none; color:#222; font-size:12px; }}
-.clause-nav a.on {{ background:#008787; color:#fff; border-color:#008787; }}
+.clause-nav a.on {{ background:var(--green-deep); color:#fff; border-color:var(--green-deep); }}
 .row label {{ margin-right:12px; }}
 .orig-sw {{ font-weight:normal; color:#666; font-size:13px; margin-left:8px; }}
-.spec-orig {{ display:none; border-left:3px solid #008787; background:#f3faf9;
+.spec-orig {{ display:none; border-left:3px solid var(--green); background:var(--green-soft);
   padding:8px 12px; margin:12px 0; }}
 .spec-orig pre {{ white-space:pre-wrap; font-family:Segoe UI, Microsoft JhengHei, sans-serif;
   font-size:13px; margin:8px 0 0; color:#222; }}
 body:has(#showOrig:checked) .spec-orig {{ display:block; }}
 .spec-tables {{ display:none; margin:16px 0; }}
 .spec-tables table {{ font-size:12px; }}
-.spec-tables caption {{ text-align:left; font-weight:600; padding:8px 0 4px; color:#008787; }}
+.spec-tables caption {{ text-align:left; font-weight:600; padding:8px 0 4px; color:var(--green-deep); }}
 body:has(#showTables:checked) .spec-tables {{ display:block; }}
 .spec-figs .pdf-fig {{ display:block; max-width:100%; height:auto; border:1px solid #ddd; background:#fff; }}
 .spec-prose {{ max-width:40em; margin:8px 0 16px; color:#222; }}
 .spec-prose p {{ margin:0 0 0.75em; line-height:1.75; }}
 .spec-prose p:last-child {{ margin-bottom:0; }}
-.spec-detail {{ padding:10px 14px 12px; background:#f7fafa; border-left:3px solid #008787; }}
+.spec-detail {{ padding:10px 14px 12px; background:var(--paper-soft); border-left:3px solid var(--green); }}
 </style>
 """
     return _page(f"{spec.id} 測試規格對照", body)
@@ -250,9 +250,11 @@ def _stats_table(spec, live: list[dict], module: str, project: str) -> str:
             '<p class="muted">上面選模組與專案後，才會用已匯入的摘要列對這一條。</p>'
         )
     if not live:
+        analysis = "/analysis?module=" + quote(module) + "&clause=" + quote(spec.id)
         return (
             f"<h3>{escape(module)} · {escape(project)}</h3>"
             f'<p class="muted">這個專案的摘要列沒有 {escape(spec.id)}。</p>'
+            f'<p><a href="{analysis}">回到量測分析查看其他資料範圍</a></p>'
         )
     bands: dict[str, dict[str, int]] = {}
     names: set[str] = set()
@@ -275,6 +277,7 @@ def _stats_table(spec, live: list[dict], module: str, project: str) -> str:
             "</tr>"
         )
     shown = "、".join(sorted(names))
+    analysis = "/analysis?module=" + quote(module) + "&clause=" + quote(spec.id)
     return f"""
 <h3>{escape(module)} · {escape(project)}　摘要列</h3>
 <p class="muted">對到：{escape(shown)}。數字是摘要列次數（含 Low／Mid／High 各一列），不是細節點。</p>
@@ -282,4 +285,5 @@ def _stats_table(spec, live: list[dict], module: str, project: str) -> str:
 <tr><th>Band</th><th>Pass</th><th>Fail</th><th>Skip</th><th>其他</th></tr>
 {''.join(trs)}
 </table>
+<p><a href="{analysis}">開啟 {escape(spec.id)} 的量測分析</a></p>
 """

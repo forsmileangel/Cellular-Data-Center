@@ -74,8 +74,8 @@ def gloss_shell() -> str:
 
 def gloss_css() -> str:
     return """
-.gloss-open { display:inline; margin:0; padding:0 1px; border:none; border-bottom:1px dotted #008787;
-  background:none; color:#008787; font:inherit; cursor:pointer; }
+.gloss-open { display:inline; margin:0; padding:0 1px; border:none; border-bottom:1px dotted var(--green);
+  background:none; color:var(--green-deep); font:inherit; cursor:pointer; }
 .gloss-open:hover { background:#e8f5f5; }
 .gloss-src { display:none; }
 .gloss-box { position:fixed; inset:0; z-index:40; background:rgba(0,0,0,.35);
@@ -85,7 +85,7 @@ def gloss_css() -> str:
   max-height:80vh; overflow:auto; box-shadow:0 8px 24px rgba(0,0,0,.18); }
 .gloss-bar { display:flex; align-items:center; justify-content:space-between;
   padding:10px 12px 8px; border-bottom:1px solid #e5e5e5; position:sticky; top:0; background:#fff; }
-.gloss-bar h3 { margin:0; font-size:16px; color:#008787; padding-right:12px; }
+.gloss-bar h3 { margin:0; font-size:16px; color:var(--green-deep); padding-right:12px; }
 .gloss-x { border:none; background:none; font-size:22px; line-height:1; color:#666;
   cursor:pointer; padding:0 4px; }
 .gloss-x:hover { color:#000; }

@@ -1,4 +1,4 @@
-"""Link earlier Fail to a later retry Pass on the same DUT / band / test / LMH."""
+"""Link retries only inside the same module / project / folder scope."""
 
 from __future__ import annotations
 
@@ -17,6 +17,9 @@ class RetryLink:
 def event_key(row: dict) -> tuple:
     lmh = row.get("lmh") or str(row.get("channel") or "")
     return (
+        row.get("module") or "",
+        row.get("project") or "",
+        row.get("data_folder") or "",
         row.get("imei") or "",
         row.get("band") or "",
         row.get("test_name") or "",
@@ -54,7 +57,7 @@ def build_links(events: list[dict]) -> dict[tuple, RetryLink]:
 
 
 def latest_verdict(events: list[dict]) -> dict[tuple, dict]:
-    """Latest row per (imei, band, test, lmh)."""
+    """Latest row per project/folder/IMEI/band/test/LMH."""
     best: dict[tuple, dict] = {}
     for ev in sorted(events, key=lambda x: (x.get("start_time") or "", int(x.get("session_id") or 0))):
         best[event_key(ev)] = ev

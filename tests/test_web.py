@@ -8,7 +8,7 @@ from uxm_report.web import HOME_PAGE, PAGE
 
 class WebPageTests(unittest.TestCase):
     def test_home_is_cards_not_import_form(self):
-        self.assertIn("Cellular Specifications and Reporting Analysis Center", HOME_PAGE)
+        self.assertIn("UXM 測試報告工作台", HOME_PAGE)
         self.assertIn("home-card", HOME_PAGE)
         self.assertIn("/import", HOME_PAGE)
         self.assertIn("報告匯入", HOME_PAGE)
@@ -31,6 +31,20 @@ class WebPageTests(unittest.TestCase):
         self.assertIn("報告匯入", PAGE)
         self.assertIn("*.pdf", PAGE)
         self.assertIn("dataFolderPick", PAGE)
+
+    def test_shared_shell_is_warm_sidebar_workspace(self):
+        self.assertIn('class="app-shell"', HOME_PAGE)
+        self.assertIn('class="sidebar"', HOME_PAGE)
+        self.assertIn("--paper:#fffdf9", HOME_PAGE)
+        self.assertIn("工作流程", HOME_PAGE)
+        self.assertIn("規格知識", HOME_PAGE)
+
+    def test_import_is_three_step_flow(self):
+        self.assertIn("01</span>", PAGE)
+        self.assertIn("歸檔資訊", PAGE)
+        self.assertIn("選擇來源", PAGE)
+        self.assertIn("03</span>", PAGE)
+        self.assertIn("執行", PAGE)
         self.assertIn("data_folder", PAGE)
 
     def test_orig_dock_and_hotkey_in_shell(self):
