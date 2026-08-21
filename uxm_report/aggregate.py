@@ -142,13 +142,16 @@ def build_report(
     project = (project or "").strip() or "UNKNOWN"
 
     columns: list[FileColumn] = []
-    idx = 1
+    file_no: dict[str, int] = {}
     for session in sessions:
         if not session.modes:
             continue
+        key = session.filename
+        if key not in file_no:
+            file_no[key] = len(file_no) + 1
+        idx = file_no[key]
         for mode in session.modes:
             columns.append(_build_column(idx, session, mode))
-            idx += 1
 
     test_names: list[str] = []
     seen = set()
@@ -165,9 +168,13 @@ def build_report(
         if imei and imei not in imeis:
             imeis.append(imei)
 
-    # File sheet
+    # File sheet: one row per source file, not per Test Mode / band.
     file_rows: list[list[str | None]] = [["Item", "Name", "TA Version", "RFA Version"]]
+    seen_files: set[str] = set()
     for col in columns:
+        if col.filename in seen_files:
+            continue
+        seen_files.add(col.filename)
         file_rows.append([col.file_label, col.filename, col.ta_version, col.rfa_version])
 
     # Overall

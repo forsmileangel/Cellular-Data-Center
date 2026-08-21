@@ -222,7 +222,7 @@ def project_page(store: Store, module: str, project: str) -> str:
 <p class="muted">會刪除此專案底下全部已匯入 session，不會刪磁碟 CSV。</p>
 
 <h2>依 band 產出 UXM Excel</h2>
-<p class="muted">勾選要進報告的 band。同一 band 若有多次量測（含重測）都會列入，檔名排序與匯入時相同。</p>
+<p class="muted">勾選要進報告的 band。同一 band 若有多次量測（含重測）都會列入，檔名排序與匯入時相同。Excel 的 File N 是一份報告檔；同一檔若有多個 band（例如 connection_test）會共用同一個 File 編號，用 Band 欄區分。</p>
 <p><label><input type="checkbox" id="groupBands" checked> 依 NR 低／中／高／超高頻分組</label>
 <span class="muted">（Low &lt;1 GHz、Mid 1–2.2 GHz、High ≥2.2 GHz 含 n78/n79、Ultra-high 僅 FR2）</span></p>
 <table>

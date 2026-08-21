@@ -1,6 +1,8 @@
 import unittest
+from pathlib import Path
 
-from uxm_report.aggregate import star_result
+from uxm_report.aggregate import build_report, star_result
+from uxm_report.parse import Session, TestMode, TestRow
 
 
 class StarResultTests(unittest.TestCase):
@@ -18,6 +20,53 @@ class StarResultTests(unittest.TestCase):
 
     def test_skip_only(self):
         self.assertEqual(star_result(["Skip", "Skip"]), "Pass*")
+
+
+def _mode(display: str, band_id: str, channel: int) -> TestMode:
+    return TestMode(
+        raw=f"SAFR1 {display} SCS15K_DFT_B20M",
+        rat="NR",
+        band_id=band_id,
+        display_band=display,
+        scs="15K",
+        bw="B20M",
+        rows=[
+            TestRow(
+                "6.2.1 UE Maximum Output Power",
+                f"{display}A",
+                channel,
+                "B20M",
+                "Pass",
+                1.0,
+            )
+        ],
+    )
+
+
+class FileNumberTests(unittest.TestCase):
+    def test_multi_band_file_keeps_one_file_number(self):
+        one = Session(
+            Path("n1.pdf"),
+            "n1.pdf",
+            {"IMEI": "1", "TA Version": "17.0"},
+            [_mode("NR_n1", "n1", 424000)],
+        )
+        conn = Session(
+            Path("connection_test.pdf"),
+            "connection_test.pdf",
+            {"IMEI": "1", "TA Version": "17.0"},
+            [
+                _mode("NR_n1", "n1", 424000),
+                _mode("NR_n28", "n28", 156100),
+            ],
+        )
+        model = build_report([one, conn], "FN990", "demo")
+        self.assertEqual([c.file_label for c in model.columns], ["File 1", "File 2", "File 2"])
+        self.assertEqual([c.mode.display_band for c in model.columns], ["NR_n1", "NR_n1", "NR_n28"])
+        self.assertEqual(
+            [row[0] for row in model.file_rows[1:]],
+            ["File 1", "File 2"],
+        )
 
 
 if __name__ == "__main__":
