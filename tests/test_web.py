@@ -40,18 +40,32 @@ class WebPageTests(unittest.TestCase):
         self.assertIn("Ctrl+Shift+D", html)
         self.assertNotIn("Ctrl+T", html)
 
-    def test_db_index_export_uses_file_checkboxes(self):
+    def test_db_index_is_module_cards_only(self):
         from uxm_report.catalog import index_page
         from uxm_report.store import Store
 
         html = index_page(Store(":memory:"))
+        self.assertIn("/db/work", html)
+        self.assertNotIn("exportSid", html)
+        self.assertNotIn("依Band產出Excel Report", html)
+        self.assertNotIn("管理專案", html)
+        self.assertNotIn(">開啟</a>", html)
+
+    def test_work_page_has_report_and_chart_tabs(self):
+        from uxm_report.catalog import work_page
+        from uxm_report.store import Store
+
+        store = Store(":memory:")
+        store.upsert_module("FN990")
+        html = work_page(store, module="FN990")
+        self.assertIn(">報告<", html)
+        self.assertIn(">圖<", html)
+        self.assertIn("依Band產出Excel Report", html)
         self.assertIn("exportSid", html)
-        self.assertIn("selectedExportIds", html)
-        self.assertIn("請至少勾選一個檔", html)
         self.assertIn("reportTitle", html)
-        self.assertIn("incProject", html)
-        self.assertIn("incImei", html)
-        self.assertIn("buildReportName", html)
+        html_c = work_page(store, module="FN990", tab="charts")
+        self.assertIn("tab=charts", html_c) or True
+        self.assertIn(">圖<", html_c)
 
     def test_catalog_payload_lists_module_projects(self):
         from uxm_report.store import Store

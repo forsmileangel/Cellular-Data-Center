@@ -800,6 +800,16 @@ class Store:
         )
         return [dict(zip(keys, r)) for r in rows]
 
+    def session_report_kinds(self, session_ids: list[int]) -> dict[int, str]:
+        out: dict[int, str] = {}
+        for sid in session_ids:
+            row = self.conn.execute(
+                "SELECT report_kind FROM sessions WHERE id=?", (int(sid),)
+            ).fetchone()
+            if row:
+                out[int(sid)] = (row[0] or "uxm").lower()
+        return out
+
     def chart_points(
         self,
         module: str,
@@ -808,27 +818,39 @@ class Store:
         test_like: str,
         item: str,
         limit: int = 800,
+        data_folder: str = "",
+        imei: str = "",
     ) -> list[dict]:
-        """One test + one item for one project band. Cap rows so HTML stays small."""
-        rows = self.conn.execute(
-            """
+        """One test + one item. Optional project/folder/IMEI. Cap 800 points."""
+        sql = """
             SELECT s.id, s.filename, s.start_time, x.test_case, x.item, x.band,
                    x.arfcn, x.value, x.lower_limit, x.upper_limit, x.unit, x.pf
             FROM detail_rows x
             JOIN sessions s ON s.id = x.session_id
             JOIN projects p ON p.id = s.project_id
             JOIN modules m ON m.id = p.module_id
-            WHERE m.model=? AND p.name=?
+            LEFT JOIN folders f ON f.id = s.folder_id
+            JOIN duts dut ON dut.id = s.dut_id
+            WHERE m.model=?
               AND x.pf IN ('Pass', 'Fail')
               AND x.item=?
               AND x.test_case LIKE ?
               AND UPPER(REPLACE(REPLACE(x.band,'NR_',''),'n','N'))
                   = UPPER(REPLACE(REPLACE(?, 'NR_', ''), 'n', 'N'))
-            ORDER BY s.start_time, s.id
-            LIMIT ?
-            """,
-            (module, project, item, test_like, band_token, limit),
-        ).fetchall()
+        """
+        args: list = [module, item, test_like, band_token]
+        if project:
+            sql += " AND p.name=?"
+            args.append(project)
+        if data_folder:
+            sql += " AND f.name=?"
+            args.append(data_folder)
+        if imei:
+            sql += " AND dut.imei=?"
+            args.append(imei)
+        sql += " ORDER BY s.start_time, s.id LIMIT ?"
+        args.append(limit)
+        rows = self.conn.execute(sql, args).fetchall()
         keys = (
             "session_id",
             "filename",

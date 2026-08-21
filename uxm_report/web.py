@@ -12,12 +12,7 @@ from urllib.parse import parse_qs, urlparse
 from .parse import list_report_files
 from .pipeline import run_build, run_ingest, run_report_from_db
 from .analysis_pages import analysis_index, analysis_module, analysis_session
-from .catalog import (
-    charts_page as db_charts,
-    index_page as db_index,
-    module_page as db_module,
-    project_page as db_project,
-)
+from .catalog import index_page as db_index, work_page as db_work
 from .review import list_page, session_page, site_nav
 from .spec_pages import spec_page
 from .store import Store
@@ -506,16 +501,9 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(raw)
             return
         if parsed.path == "/db":
-            qs = parse_qs(parsed.query)
             store = Store(ROOT / "uxm.db")
             try:
-                html = db_index(
-                    store,
-                    (qs.get("module") or [""])[0],
-                    (qs.get("project") or [""])[0],
-                    (qs.get("data_folder") or [""])[0],
-                    (qs.get("imei") or [""])[0],
-                )
+                html = db_index(store)
             finally:
                 store.close()
             raw = html.encode("utf-8")
@@ -525,45 +513,31 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(raw)
             return
-        if parsed.path == "/db/module":
-            name = (parse_qs(parsed.query).get("name") or [""])[0]
-            store = Store(ROOT / "uxm.db")
-            try:
-                html = db_module(store, name)
-            finally:
-                store.close()
-            raw = html.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(raw)))
-            self.end_headers()
-            self.wfile.write(raw)
-            return
-        if parsed.path == "/db/project":
+        if parsed.path in ("/db/work", "/db/module", "/db/project", "/db/charts"):
             qs = parse_qs(parsed.query)
-            module = (qs.get("module") or [""])[0]
+            module = (qs.get("module") or qs.get("name") or [""])[0]
             project = (qs.get("project") or [""])[0]
-            store = Store(ROOT / "uxm.db")
-            try:
-                html = db_project(store, module, project)
-            finally:
-                store.close()
-            raw = html.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(raw)))
-            self.end_headers()
-            self.wfile.write(raw)
-            return
-        if parsed.path == "/db/charts":
-            qs = parse_qs(parsed.query)
-            module = (qs.get("module") or [""])[0]
-            project = (qs.get("project") or [""])[0]
+            data_folder = (qs.get("data_folder") or [""])[0]
+            imei = (qs.get("imei") or [""])[0]
+            tab = (qs.get("tab") or [""])[0]
+            if parsed.path == "/db/charts":
+                tab = "charts"
+            elif parsed.path == "/db/project":
+                tab = "report"
             band = (qs.get("band") or [""])[0]
             chart = (qs.get("chart") or ["621-power"])[0]
             store = Store(ROOT / "uxm.db")
             try:
-                html = db_charts(store, module, project, band, chart)
+                html = db_work(
+                    store,
+                    module,
+                    project,
+                    data_folder,
+                    imei,
+                    tab,
+                    band,
+                    chart,
+                )
             finally:
                 store.close()
             raw = html.encode("utf-8")
@@ -857,6 +831,15 @@ class Handler(BaseHTTPRequestHandler):
                             ids.append(int(row["id"]))
             finally:
                 store.close()
+            store = Store(ROOT / "uxm.db")
+            try:
+                kinds = store.session_report_kinds(ids)
+            finally:
+                store.close()
+            mixed = [k for k in kinds.values() if k not in ("", "uxm")]
+            if mixed:
+                _json(self, 400, {"error": "UXM 與 CMW500 不能混成同一份 Excel Report"})
+                return
             try:
                 result = run_report_from_db(
                     module,
