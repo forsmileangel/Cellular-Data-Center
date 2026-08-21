@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +17,18 @@ class BuildResult:
     model: WorkbookModel
     output: Path
     csv_count: int
+
+
+def safe_xlsx_name(name: str, fallback: str = "Excel Report.xlsx") -> str:
+    text = (name or "").strip()
+    text = Path(text).name
+    text = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", text)
+    text = re.sub(r"_+", "_", text).strip(" ._")
+    if not text:
+        text = fallback
+    if not text.lower().endswith(".xlsx"):
+        text += ".xlsx"
+    return text[:180]
 
 
 def run_ingest(
@@ -96,6 +109,7 @@ def run_report_from_db(
     bands: list[str] | None = None,
     db: str | Path | None = None,
     output: str | Path | None = None,
+    filename: str = "",
 ) -> BuildResult:
     from .parse import keep_bands, parse_text
 
@@ -113,10 +127,10 @@ def run_report_from_db(
         raise ValueError("資料庫裡找不到這些 session 的 raw CSV")
     want = set(bands or [])
     sessions = []
-    for filename, raw in pairs:
+    for src_name, raw in pairs:
         if not raw:
-            raise ValueError(f"{filename} 沒有 raw CSV，請重新匯入")
-        session = parse_text(raw, filename)
+            raise ValueError(f"{src_name} 沒有 raw CSV，請重新匯入")
+        session = parse_text(raw, src_name)
         if want:
             keep_bands(session, want)
         if session.modes:
@@ -127,6 +141,9 @@ def run_report_from_db(
     if output:
         out = Path(output)
     else:
-        out = root / "out" / f"{module} {project or 'UNKNOWN'} UXM Report.xlsx"
+        label = safe_xlsx_name(filename) if filename else safe_xlsx_name(
+            f"{module}_{project or 'UNKNOWN'}_Excel Report.xlsx"
+        )
+        out = root / "out" / label
     write_xlsx(model, out)
     return BuildResult(model=model, output=out, csv_count=len(sessions))

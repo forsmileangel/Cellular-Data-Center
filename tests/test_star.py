@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 
 from uxm_report.aggregate import build_report, star_result
+from uxm_report.pipeline import safe_xlsx_name
 from uxm_report.parse import Session, TestMode, TestRow, is_connection_test, plan_label
 
 
@@ -73,6 +74,13 @@ class FileNumberTests(unittest.TestCase):
         self.assertEqual(model.overall_rows[2][4], "File 2 (connection test)")
         self.assertEqual(model.overall_rows[2][5], "connection test")
         self.assertIsNone(model.overall_rows[1][5])
+
+
+class SafeNameTests(unittest.TestCase):
+    def test_strips_path_and_adds_xlsx(self):
+        self.assertEqual(safe_xlsx_name("foo/bar*baz"), "bar_baz.xlsx")
+        self.assertEqual(safe_xlsx_name("SA Full Test"), "SA Full Test.xlsx")
+        self.assertEqual(safe_xlsx_name(""), "Excel Report.xlsx")
 
 
 class PlanLabelTests(unittest.TestCase):

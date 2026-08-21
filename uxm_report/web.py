@@ -858,7 +858,13 @@ class Handler(BaseHTTPRequestHandler):
             finally:
                 store.close()
             try:
-                result = run_report_from_db(module, project, ids, bands=bands)
+                result = run_report_from_db(
+                    module,
+                    project,
+                    ids,
+                    bands=bands,
+                    filename=body.get("filename") or "",
+                )
             except Exception as exc:
                 _json(self, 400, {"error": str(exc)})
                 return

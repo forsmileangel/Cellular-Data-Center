@@ -51,6 +51,66 @@ def _rat_label(rat: str, bands: str) -> str:
     return rat or "未標"
 
 
+def _report_name_box() -> str:
+    return """
+<div class="name-box">
+  <label>自填檔名
+    <input id="reportTitle" type="text" placeholder="例如 SA Full Test" autocomplete="off">
+  </label>
+  <label class="chk"><input type="checkbox" id="incProject"> 帶入專案名稱</label>
+  <label class="chk"><input type="checkbox" id="incImei"> 帶入 IMEI</label>
+  <p class="muted" id="namePreview">預覽：會先放模組名稱，再依選項接專案、IMEI，最後是自填檔名。</p>
+</div>
+"""
+
+
+def _report_name_script() -> str:
+    return r"""
+function uniqueData(selector, attr) {
+  const seen = [];
+  document.querySelectorAll(selector).forEach((el) => {
+    const v = (el.getAttribute(attr) || "").trim();
+    if (v && !seen.includes(v)) seen.push(v);
+  });
+  return seen;
+}
+function sanitizePart(s) {
+  return String(s || "").replace(/[\\/:*?"<>|]+/g, "_").replace(/_+/g, "_").replace(/^[.\s_]+|[.\s_]+$/g, "");
+}
+function buildReportName() {
+  const raw = (document.getElementById("reportTitle") || {}).value || "";
+  const custom = sanitizePart(raw.replace(/\.xlsx$/i, "")) || "Excel Report";
+  const exportSel = "input[name=exportSid]:checked";
+  const fileSel = document.querySelectorAll("input[name=exportSid]").length ? exportSel : "input[name=sid]";
+  const parts = [];
+  const mods = (typeof moduleName === "string" && moduleName) ? [moduleName] : uniqueData(fileSel, "data-module");
+  if (mods.length) parts.push(mods.length === 1 ? mods[0] : mods.join("-"));
+  if (document.getElementById("incProject") && document.getElementById("incProject").checked) {
+    const ps = (typeof projectName === "string" && projectName) ? [projectName] : uniqueData(fileSel, "data-project");
+    if (ps.length) parts.push(ps.length === 1 ? ps[0] : ps.join("-"));
+  }
+  if (document.getElementById("incImei") && document.getElementById("incImei").checked) {
+    const imeis = uniqueData(fileSel, "data-imei");
+    if (imeis.length) parts.push(imeis.length === 1 ? imeis[0] : imeis.join("-"));
+  }
+  parts.push(custom);
+  return sanitizePart(parts.join("_")) + ".xlsx";
+}
+function refreshNamePreview() {
+  const el = document.getElementById("namePreview");
+  if (el) el.textContent = "預覽：" + buildReportName();
+}
+["reportTitle", "incProject", "incImei"].forEach((id) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("input", refreshNamePreview);
+  el.addEventListener("change", refreshNamePreview);
+});
+document.querySelectorAll("input[name=exportSid]").forEach((el) => el.addEventListener("change", refreshNamePreview));
+refreshNamePreview();
+"""
+
+
 def _sel(name: str, current: str, options: list[str], all_label: str) -> str:
     bits = [f'<option value="">{escape(all_label)}</option>']
     for o in options:
@@ -122,7 +182,10 @@ def index_page(
     for s in rows:
         file_rows.append(
             "<tr>"
-            f"<td><input type=\"checkbox\" name=\"exportSid\" value=\"{s['id']}\" checked></td>"
+            f"<td><input type=\"checkbox\" name=\"exportSid\" value=\"{s['id']}\" checked"
+            f" data-module=\"{escape(s.get('module') or '')}\""
+            f" data-project=\"{escape(s.get('project') or '')}\""
+            f" data-imei=\"{escape(s.get('imei') or '')}\"></td>"
             f"<td>{escape(s.get('module') or '')}</td>"
             f"<td>{escape(s.get('project') or '')}</td>"
             f"<td>{escape(s.get('data_folder') or '')}</td>"
@@ -161,6 +224,7 @@ def index_page(
 {''.join(band_blocks) or '<tbody><tr><td colspan="2">沒有資料。請先匯入或放寬篩選。</td></tr></tbody>'}
 </table>
 <p style="margin-top:12px"><button type="button" id="exportBands">依Band產出Excel Report</button></p>
+{_report_name_box()}
 <div id="status"></div>
 
 <h2>模組</h2>
@@ -178,6 +242,10 @@ def index_page(
 .card:hover {{ border-color:#008787; }}
 .card h2 {{ margin:0 0 6px; font-size:18px; color:#008787; }}
 .card p {{ margin:0 0 8px; color:#666; font-size:13px; }}
+.name-box {{ margin-top:12px; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }}
+.name-box input[type=text] {{ display:block; margin-top:4px; min-width:240px; }}
+.name-box .chk {{ font-weight:normal; font-size:13px; }}
+#namePreview {{ width:100%; margin:0; }}
 </style>
 <script>
 const moduleName = {module!r};
@@ -187,8 +255,8 @@ function selectedExportIds() {{
 }}
 const fileAll = document.getElementById("fileAll");
 const fileNone = document.getElementById("fileNone");
-if (fileAll) fileAll.onclick = () => document.querySelectorAll('input[name=exportSid]').forEach((el) => {{ el.checked = true; }});
-if (fileNone) fileNone.onclick = () => document.querySelectorAll('input[name=exportSid]').forEach((el) => {{ el.checked = false; }});
+if (fileAll) fileAll.onclick = () => {{ document.querySelectorAll('input[name=exportSid]').forEach((el) => {{ el.checked = true; }}); refreshNamePreview(); }};
+if (fileNone) fileNone.onclick = () => {{ document.querySelectorAll('input[name=exportSid]').forEach((el) => {{ el.checked = false; }}); refreshNamePreview(); }};
 document.getElementById("addModule").onclick = async () => {{
   const name = document.getElementById("newModule").value.trim();
   if (!name) {{ alert("請輸入新模組型號"); return; }}
@@ -209,10 +277,11 @@ document.getElementById("exportBands").onclick = async () => {{
   if (!bands.length) {{ status.textContent = "請至少選一個 band"; status.className="err"; return; }}
   status.className = "";
   status.textContent = "從資料庫產生 Excel Report…";
+  const filename = buildReportName();
   const r = await fetch("/api/report", {{
     method: "POST",
     headers: {{"Content-Type": "application/json"}},
-    body: JSON.stringify({{module: moduleName, project: projectName, bands, ids}})
+    body: JSON.stringify({{module: moduleName, project: projectName, bands, ids, filename}})
   }});
   if (!r.ok) {{
     const j = await r.json().catch(() => ({{error:"失敗"}}));
@@ -220,7 +289,7 @@ document.getElementById("exportBands").onclick = async () => {{
     status.textContent = j.error || "產生失敗";
     return;
   }}
-  const name = r.headers.get("X-Filename") || "Excel Report.xlsx";
+  const name = filename || r.headers.get("X-Filename") || "Excel Report.xlsx";
   const blob = await r.blob();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -230,6 +299,7 @@ document.getElementById("exportBands").onclick = async () => {{
   status.className = "ok";
   status.textContent = "已下載 " + name;
 }};
+{_report_name_script()}
 </script>
 """
     return _page("測試資料庫", body)
@@ -340,7 +410,10 @@ def project_page(store: Store, module: str, project: str) -> str:
     for s in sessions:
         file_rows.append(
             "<tr>"
-            f"<td><input type=\"checkbox\" name=\"sid\" value=\"{s['id']}\"></td>"
+            f"<td><input type=\"checkbox\" name=\"sid\" value=\"{s['id']}\""
+            f" data-module=\"{escape(module)}\""
+            f" data-project=\"{escape(project)}\""
+            f" data-imei=\"{escape(s.get('imei') or '')}\"></td>"
             f"<td>{escape(s['filename'])}</td>"
             f"<td>{escape(s.get('data_folder') or '')}</td>"
             f"<td>{escape(s['imei'])}</td>"
@@ -377,6 +450,7 @@ def project_page(store: Store, module: str, project: str) -> str:
 {''.join(band_blocks) or '<tbody><tr><td colspan="4">沒有 band 資料，請先匯入。</td></tr></tbody>'}
 </table>
 <p style="margin-top:12px"><button type="button" id="exportBands">依Band產出Excel Report</button></p>
+{_report_name_box()}
 <div id="status"></div>
 
 <h2>檔案（可改掛到別的專案）</h2>
@@ -436,14 +510,15 @@ document.getElementById("exportBands").onclick = async () => {{
   if (!bands.length) {{ status.textContent = "請至少選一個 band"; status.className="err"; return; }}
   status.className = "";
   status.textContent = "從資料庫產生 Excel Report…";
-  const r = await post("/api/report", {{module: moduleName, project: projectName, bands}});
+  const filename = buildReportName();
+  const r = await post("/api/report", {{module: moduleName, project: projectName, bands, filename}});
   if (!r.ok) {{
     const j = await r.json().catch(() => ({{error:"失敗"}}));
     status.className = "err";
     status.textContent = j.error || "產生失敗";
     return;
   }}
-  const name = r.headers.get("X-Filename") || "UXM Report.xlsx";
+  const name = filename || r.headers.get("X-Filename") || "Excel Report.xlsx";
   const blob = await r.blob();
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -453,6 +528,7 @@ document.getElementById("exportBands").onclick = async () => {{
   status.className = "ok";
   status.textContent = "已下載 " + name;
 }};
+{_report_name_script()}
 document.getElementById("delProject").onclick = async () => {{
   if (!confirm("刪除專案「" + projectName + "」以及底下全部 session？\\n不會刪磁碟上的 CSV。")) return;
   const r = await post("/api/delete-project", {{module: moduleName, project: projectName}});

@@ -48,6 +48,10 @@ class WebPageTests(unittest.TestCase):
         self.assertIn("exportSid", html)
         self.assertIn("selectedExportIds", html)
         self.assertIn("請至少勾選一個檔", html)
+        self.assertIn("reportTitle", html)
+        self.assertIn("incProject", html)
+        self.assertIn("incImei", html)
+        self.assertIn("buildReportName", html)
 
     def test_catalog_payload_lists_module_projects(self):
         from uxm_report.store import Store

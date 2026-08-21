@@ -55,6 +55,10 @@ th { background:#eef6f6; }
 .err { color:#8b0000; }
 .ok { color:#008787; }
 .muted { color:var(--muted); font-size:12px; }
+.name-box { margin-top:12px; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+.name-box input[type=text] { display:block; margin-top:4px; min-width:240px; }
+.name-box .chk { font-weight:normal; font-size:13px; }
+#namePreview { width:100%; margin:0; }
 .meta { font-size:14px; margin:0 0 12px; }
 .filters a { margin-right:10px; }
 .bar { display:inline-block; position:relative; width:90px; height:10px; background:#eee; border:1px solid #ccc; vertical-align:middle; }
