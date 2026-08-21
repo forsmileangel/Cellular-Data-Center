@@ -180,9 +180,25 @@ def _fail_counts(store: Store) -> tuple[dict[int, int], dict[int, int]]:
 def _del_script() -> str:
     return """
 <script>
+async function postDel(body) {
+  const r = await fetch("/api/delete-many", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (!r.ok) { alert(j.error || "刪除失敗"); return; }
+  location.reload();
+}
+function checkedIds() {
+  return Array.from(document.querySelectorAll('input[name=sid]:checked')).map((el) => Number(el.value));
+}
+function allIds() {
+  return Array.from(document.querySelectorAll('input[name=sid]')).map((el) => Number(el.value));
+}
 document.querySelectorAll("button[data-del]").forEach((btn) => {
   btn.onclick = async () => {
-    if (!confirm("從資料庫刪除：\\n" + btn.dataset.name + "\\n（不刪你磁碟上的 CSV）")) return;
+    if (!confirm("從資料庫刪除：\\n" + btn.dataset.name + "\\n（不刪你磁碟上的檔）")) return;
     const r = await fetch("/api/delete", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -193,6 +209,26 @@ document.querySelectorAll("button[data-del]").forEach((btn) => {
     location.reload();
   };
 });
+const selAll = document.getElementById("selAll");
+const selNone = document.getElementById("selNone");
+const delChecked = document.getElementById("delChecked");
+const delAll = document.getElementById("delAll");
+if (selAll) selAll.onclick = () => document.querySelectorAll('input[name=sid]').forEach((el) => { el.checked = true; });
+if (selNone) selNone.onclick = () => document.querySelectorAll('input[name=sid]').forEach((el) => { el.checked = false; });
+if (delChecked) delChecked.onclick = async () => {
+  const ids = checkedIds();
+  if (!ids.length) { alert("請先勾選要刪的檔"); return; }
+  if (!confirm("從資料庫刪除勾選的 " + ids.length + " 筆？\\n不刪磁碟檔。")) return;
+  await postDel({ids});
+};
+if (delAll) delAll.onclick = async () => {
+  const ids = allIds();
+  if (!ids.length) { alert("這一頁沒有檔"); return; }
+  if (!confirm("將刪除這個專案目前列表的 " + ids.length + " 筆（僅資料庫）。下一步還要輸入「刪除」。")) return;
+  const typed = prompt("請輸入「刪除」以確認全部刪除：");
+  if (typed !== "刪除") { alert("已取消"); return; }
+  await postDel({ids});
+};
 </script>
 """
 
@@ -277,8 +313,10 @@ def _review_sessions(store: Store, rows: list[dict], module: str, project: str) 
         href = f"/review/session?id={r['id']}"
         trs.append(
             "<tr>"
+            f"<td><input type=\"checkbox\" name=\"sid\" value=\"{r['id']}\"></td>"
             f"<td>{escape(r.get('imported_at') or '—')}</td>"
             f"<td>{escape(r['start_time'] or '')}</td>"
+            f"<td>{escape(r.get('data_folder') or '')}</td>"
             f"<td>{escape(r['imei'])}</td>"
             f"<td><a href=\"{href}\">{escape(r['filename'])}</a> "
             f"<a class=\"muted\" href=\"/analysis/session?id={r['id']}\">資料分析</a></td>"
@@ -301,9 +339,16 @@ def _review_sessions(store: Store, rows: list[dict], module: str, project: str) 
 「匯入時間」是進庫時間；「測試時間」是 CSV 裡的 Start Time。舊資料若還沒有匯入時間會顯示 —。
 </div>
 <p class="muted">{len(items)} 筆匯入紀錄。</p>
+<p class="row">
+  <button type="button" class="secondary" id="selAll">全選</button>
+  <button type="button" class="secondary" id="selNone">全不選</button>
+  <button type="button" class="danger" id="delChecked">刪除勾選</button>
+  <button type="button" class="danger" id="delAll">全部刪除</button>
+</p>
+<p class="muted">刪除只從資料庫拿掉，不刪磁碟檔。全部刪除只針對這個專案，要確認兩次。</p>
 <table>
-<tr><th>匯入時間</th><th>測試時間</th><th>IMEI</th><th>檔名</th><th>TA</th><th>來源</th><th>Overall</th><th>摘要</th><th>細節</th><th>Fail</th><th></th></tr>
-{''.join(trs) or '<tr><td colspan="11">這個專案還沒有匯入紀錄。</td></tr>'}
+<tr><th></th><th>匯入時間</th><th>測試時間</th><th>資料夾</th><th>IMEI</th><th>檔名</th><th>TA</th><th>來源</th><th>Overall</th><th>摘要</th><th>細節</th><th>Fail</th><th></th></tr>
+{''.join(trs) or '<tr><td colspan="13">這個專案還沒有匯入紀錄。</td></tr>'}
 </table>
 {_del_script()}
 """
@@ -371,6 +416,7 @@ IMEI <b>{escape(head['imei'])}</b> ·
 匯入 {escape(head.get('imported_at') or '—')}<br>
 TestPlan {escape(head['test_plan'] or '')} ·
 Overall <span class="{_vclass(head['overall_result'])}">{escape(head['overall_result'] or '')}</span> ·
+資料夾 {escape(head.get('data_folder') or 'UNKNOWN')} ·
 TA {escape(head.get('ta_major') or '—')}
 （{escape(head['ta_version'] or '')}） ·
 來源 {escape(head.get('source_kind') or 'csv')} ·

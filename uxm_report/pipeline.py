@@ -24,11 +24,13 @@ def run_ingest(
     project: str = "",
     files: list[str] | None = None,
     db: str | Path | None = None,
+    data_folder: str = "",
 ) -> tuple[int, int]:
     module = (module or "").strip()
     if not module:
         raise ValueError("模組型號必填")
     project = (project or "").strip() or "UNKNOWN"
+    data_folder = (data_folder or "").strip() or "UNKNOWN"
     folder = Path(folder)
     if not folder.is_dir():
         raise FileNotFoundError(f"找不到資料夾: {folder}")
@@ -41,7 +43,7 @@ def run_ingest(
     details = 0
     try:
         for session in sessions:
-            store.import_session(session, module, project)
+            store.import_session(session, module, project, data_folder=data_folder)
             details += len(session.details)
     finally:
         store.close()
@@ -55,11 +57,13 @@ def run_build(
     db: str | Path | None = None,
     output: str | Path | None = None,
     files: list[str] | None = None,
+    data_folder: str = "",
 ) -> BuildResult:
     module = (module or "").strip()
     if not module:
         raise ValueError("模組型號必填")
     project = (project or "").strip() or "UNKNOWN"
+    data_folder = (data_folder or "").strip() or "UNKNOWN"
     folder = Path(folder)
     if not folder.is_dir():
         raise FileNotFoundError(f"找不到資料夾: {folder}")
@@ -72,7 +76,7 @@ def run_build(
     store = Store(db_path)
     try:
         for session in sessions:
-            store.import_session(session, module, project)
+            store.import_session(session, module, project, data_folder=data_folder)
     finally:
         store.close()
 
@@ -95,9 +99,7 @@ def run_report_from_db(
 ) -> BuildResult:
     from .parse import keep_bands, parse_text
 
-    module = (module or "").strip()
-    if not module:
-        raise ValueError("模組型號必填")
+    module = (module or "").strip() or "Report"
     if not session_ids:
         raise ValueError("請選擇要出報告的檔案或 band")
     root = Path(__file__).resolve().parents[1]

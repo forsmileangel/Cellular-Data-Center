@@ -30,3 +30,29 @@ class ProjectRenameTests(unittest.TestCase):
             self.assertEqual(store.list_projects("FN990B"), [])
         finally:
             store.close()
+
+    def test_folders_and_filter(self):
+        sample = Path(
+            r"C:\My-project\UXM Report\FN990B Module Test Report"
+            r"\351138790009917_N8_Full Test _2026-03-24_15-08-23_Pass.csv"
+        )
+        if not sample.exists():
+            self.skipTest("sample CSV missing")
+        session = parse_csv(sample)
+        tmp = Path(tempfile.mkdtemp()) / "t.db"
+        store = Store(tmp)
+        try:
+            a = store.import_session(session, "FN990B", "模組引進", data_folder="TA17")
+            b = store.import_session(session, "FN990B", "模組引進", data_folder="TA20")
+            self.assertNotEqual(a, b)
+            self.assertEqual(store.list_folders("FN990B", "模組引進"), ["TA17", "TA20"])
+            t17 = store.filter_sessions("FN990B", "模組引進", "TA17")
+            t20 = store.filter_sessions("FN990B", "模組引進", "TA20")
+            self.assertEqual(len(t17), 1)
+            self.assertEqual(len(t20), 1)
+            self.assertEqual(t17[0]["data_folder"], "TA17")
+            n = store.delete_sessions([a])
+            self.assertEqual(n, 1)
+            self.assertEqual(len(store.filter_sessions("FN990B", "模組引進")), 1)
+        finally:
+            store.close()

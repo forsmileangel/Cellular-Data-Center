@@ -40,6 +40,7 @@ def cmd_build(args: argparse.Namespace) -> int:
             db=args.db,
             output=args.output or None,
             files=names or None,
+            data_folder=getattr(args, "data_folder", "") or "",
         )
     except (ValueError, FileNotFoundError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -62,7 +63,8 @@ def cmd_ingest(args: argparse.Namespace) -> int:
     names = [x.strip() for x in (args.files or "").split(",") if x.strip()]
     try:
         n_sess, n_det = run_ingest(
-            args.input, module, project, files=names or None, db=args.db
+            args.input, module, project, files=names or None, db=args.db,
+            data_folder=getattr(args, "data_folder", "") or "",
         )
     except (ValueError, FileNotFoundError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -112,6 +114,7 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--input", required=True, help="Folder of UXM CSV files")
     b.add_argument("--module", required=True, help="Module model (required)")
     b.add_argument("--project", default="", help="Project name; default UNKNOWN")
+    b.add_argument("--data-folder", default="", dest="data_folder", help="Folder under project (TA17, pre-DVT); default UNKNOWN")
     b.add_argument("--output", default="", help="Output xlsx path")
     b.add_argument("--db", default=str(root / "uxm.db"), help="SQLite path")
     b.add_argument("--files", default="", help="Comma-separated CSV names; default all")
@@ -128,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     ing.add_argument("--input", required=True)
     ing.add_argument("--module", required=True)
     ing.add_argument("--project", default="")
+    ing.add_argument("--data-folder", default="", dest="data_folder")
     ing.add_argument("--db", default=str(root / "uxm.db"))
     ing.add_argument("--files", default="", help="Comma-separated CSV names; default all")
     ing.set_defaults(func=cmd_ingest)

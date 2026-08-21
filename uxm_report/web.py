@@ -61,7 +61,7 @@ HOME_PAGE = """<!DOCTYPE html>
   <p class="sub">選一個功能進入。</p>
   <div class="home-cards">
     <a class="home-card" href="/import"><strong>報告匯入</strong><span>把 UXM CSV 放進測試資料庫，或順便出 Excel</span></a>
-    <a class="home-card" href="/db"><strong>測試資料庫</strong><span>模組、專案、出 UXM Excel</span></a>
+    <a class="home-card" href="/db"><strong>測試資料庫</strong><span>篩選後依 Band 產出 Excel Report</span></a>
     <a class="home-card" href="/review"><strong>資料審核</strong><span>依模組／專案查匯入紀錄</span></a>
     <a class="home-card" href="/analysis"><strong>資料分析</strong><span>量測相對 LSL／USL 的位置</span></a>
     <a class="home-card" href="/spec"><strong>測試規格對照</strong><span>RFA 測項對 38.521-1</span></a>
@@ -156,7 +156,18 @@ NAV_SLOT
   </div>
   <div class="hint">選填。先搜尋或下拉選已有專案；沒有才新增。都不填則存 UNKNOWN。</div>
 
-  <label>報告資料夾 <span class="req">*</span></label>
+  <label>資料夾</label>
+  <input id="dataFolderSearch" type="search" placeholder="搜尋已有資料夾" autocomplete="off">
+  <select id="dataFolderPick">
+    <option value="">不指定（UNKNOWN）</option>
+    <option value="__new__">＋ 新增資料夾…</option>
+  </select>
+  <div id="dataFolderNewWrap" class="pick-new" hidden>
+    <input id="dataFolderNew" type="text" placeholder="例如 TA17、TA20、e-test、pre-DVT">
+  </div>
+  <div class="hint">專案底下再分一層，避免 TA17／TA20 或 e-test／pre-DVT 混在一起。選既有或新增；空白則 UNKNOWN。</div>
+
+  <label>報告檔所在路徑 <span class="req">*</span></label>
   <div class="row">
     <input id="folder" type="text" placeholder="選擇或貼上本機資料夾路徑">
     <button type="button" class="secondary" id="browse">瀏覽</button>
@@ -197,6 +208,11 @@ function chosenModule() {
 function chosenProject() {
   const pick = $('projectPick').value;
   if (pick === '__new__') return $('projectNew').value.trim();
+  return pick.trim();
+}
+function chosenDataFolder() {
+  const pick = $('dataFolderPick').value;
+  if (pick === '__new__') return $('dataFolderNew').value.trim();
   return pick.trim();
 }
 function fillModuleSelect(keep) {
@@ -255,20 +271,60 @@ function toggleNew(kind) {
   $(kind + 'NewWrap').hidden = !pick;
   if (pick) $(kind + 'New').focus();
 }
+function folderNamesFor(module, project) {
+  const m = catalog.modules.find((x) => x.model === module);
+  if (!m || !m.folders || !project) return [];
+  return (m.folders[project] || []).slice();
+}
+function fillDataFolderSelect(keep) {
+  const module = $('modulePick').value;
+  const project = chosenProject();
+  const names = (module && module !== '__new__' && project && project !== '__new__')
+    ? folderNamesFor(module, project) : [];
+  const q = $('dataFolderSearch').value.trim().toLowerCase();
+  const filtered = q ? names.filter((n) => n.toLowerCase().includes(q)) : names;
+  const sel = $('dataFolderPick');
+  const cur = keep || sel.value;
+  sel.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value = '';
+  ph.textContent = '不指定（UNKNOWN）';
+  sel.appendChild(ph);
+  filtered.forEach((n) => {
+    const o = document.createElement('option');
+    o.value = n;
+    o.textContent = n;
+    sel.appendChild(o);
+  });
+  const nw = document.createElement('option');
+  nw.value = '__new__';
+  nw.textContent = '＋ 新增資料夾…';
+  sel.appendChild(nw);
+  if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
+  toggleNew('dataFolder');
+}
 async function loadCatalog() {
   const r = await fetch('/api/catalog');
   catalog = await r.json();
   if (!catalog.modules) catalog = {modules: []};
   fillModuleSelect($('modulePick').value);
   fillProjectSelect($('projectPick').value);
+  fillDataFolderSelect($('dataFolderPick').value);
 }
 $('modulePick').addEventListener('change', () => {
   toggleNew('module');
   $('projectSearch').value = '';
   fillProjectSelect('');
+  fillDataFolderSelect('');
 });
-$('projectPick').addEventListener('change', () => toggleNew('project'));
+$('projectPick').addEventListener('change', () => {
+  toggleNew('project');
+  $('dataFolderSearch').value = '';
+  fillDataFolderSelect('');
+});
 $('projectSearch').addEventListener('input', () => fillProjectSelect($('projectPick').value));
+$('dataFolderPick').addEventListener('change', () => toggleNew('dataFolder'));
+$('dataFolderSearch').addEventListener('input', () => fillDataFolderSelect($('dataFolderPick').value));
 loadCatalog();
 async function preview() {
   const folder = $('folder').value.trim();
@@ -319,7 +375,7 @@ $('ingest').onclick = async () => {
   $('ingest').disabled = true;
   status.textContent = '匯入資料庫中…';
   try {
-    const r = await postJson('/api/ingest', {module, project, folder, files});
+    const r = await postJson('/api/ingest', {module, project, data_folder: chosenDataFolder(), folder, files});
     const j = await r.json();
     if (!r.ok) { status.className='err'; status.textContent = j.error || '匯入失敗'; return; }
     status.className='ok';
@@ -344,7 +400,7 @@ $('build').onclick = async () => {
   $('build').disabled = true;
   status.textContent = '產生中（會呼叫 Excel，約數十秒）…';
   try {
-    const r = await postJson('/api/build', {module, project, folder, files});
+    const r = await postJson('/api/build', {module, project, data_folder: chosenDataFolder(), folder, files});
     if (!r.ok) {
       const j = await r.json().catch(()=>({error:'產生失敗'}));
       status.className='err';
@@ -386,7 +442,8 @@ def catalog_payload(store: Store) -> dict:
     modules = []
     for m in store.list_modules():
         projects = [p["name"] for p in store.list_projects(m["model"])]
-        modules.append({"model": m["model"], "projects": projects})
+        folders = {p: store.list_folders(m["model"], p) for p in projects}
+        modules.append({"model": m["model"], "projects": projects, "folders": folders})
     return {"modules": modules}
 
 
@@ -449,9 +506,16 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(raw)
             return
         if parsed.path == "/db":
+            qs = parse_qs(parsed.query)
             store = Store(ROOT / "uxm.db")
             try:
-                html = db_index(store)
+                html = db_index(
+                    store,
+                    (qs.get("module") or [""])[0],
+                    (qs.get("project") or [""])[0],
+                    (qs.get("data_folder") or [""])[0],
+                    (qs.get("imei") or [""])[0],
+                )
             finally:
                 store.close()
             raw = html.encode("utf-8")
@@ -672,6 +736,21 @@ class Handler(BaseHTTPRequestHandler):
                 return
             _json(self, 200, {"deleted": sid})
             return
+        if self.path == "/api/delete-many":
+            raw_ids = body.get("ids") or []
+            ids = []
+            for x in raw_ids:
+                try:
+                    ids.append(int(x))
+                except (TypeError, ValueError):
+                    continue
+            store = Store(ROOT / "uxm.db")
+            try:
+                n = store.delete_sessions(ids)
+            finally:
+                store.close()
+            _json(self, 200, {"deleted": n})
+            return
         if self.path == "/api/ingest":
             files = body.get("files") or []
             if not isinstance(files, list):
@@ -682,6 +761,7 @@ class Handler(BaseHTTPRequestHandler):
                     body.get("module") or "",
                     body.get("project") or "",
                     files=[str(x) for x in files],
+                    data_folder=body.get("data_folder") or "",
                 )
             except Exception as exc:
                 _json(self, 400, {"error": str(exc)})
@@ -741,8 +821,9 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 module = (body.get("module") or "").strip()
                 dest = (body.get("project") or "").strip()
+                dest_folder = (body.get("data_folder") or "").strip()
                 for sid in body.get("ids") or []:
-                    store.move_session_project(int(sid), module, dest)
+                    store.move_session_project(int(sid), module, dest, dest_folder)
             except Exception as exc:
                 _json(self, 400, {"error": str(exc)})
                 return
@@ -754,17 +835,26 @@ class Handler(BaseHTTPRequestHandler):
             module = (body.get("module") or "").strip()
             project = (body.get("project") or "").strip()
             bands = [str(x) for x in (body.get("bands") or [])]
+            explicit = body.get("ids") or []
             store = Store(ROOT / "uxm.db")
             try:
-                rows = store.project_sessions(module, project)
-                ids = []
-                want = set(bands)
-                for row in rows:
-                    if (row.get("report_kind") or "uxm") != "uxm":
-                        continue
-                    have = {b for b in (row.get("bands") or "").split(",") if b}
-                    if have & want:
-                        ids.append(int(row["id"]))
+                if explicit:
+                    ids = []
+                    for x in explicit:
+                        try:
+                            ids.append(int(x))
+                        except (TypeError, ValueError):
+                            continue
+                else:
+                    rows = store.project_sessions(module, project)
+                    ids = []
+                    want = set(bands)
+                    for row in rows:
+                        if (row.get("report_kind") or "uxm") != "uxm":
+                            continue
+                        have = {b for b in (row.get("bands") or "").split(",") if b}
+                        if have & want:
+                            ids.append(int(row["id"]))
             finally:
                 store.close()
             try:
@@ -795,7 +885,13 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(files, list):
             files = []
         try:
-            result = run_build(folder, module, project, files=[str(x) for x in files] or None)
+            result = run_build(
+                folder,
+                module,
+                project,
+                files=[str(x) for x in files] or None,
+                data_folder=body.get("data_folder") or "",
+            )
         except Exception as exc:
             _json(self, 400, {"error": str(exc)})
             return

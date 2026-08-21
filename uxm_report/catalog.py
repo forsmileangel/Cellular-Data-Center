@@ -51,36 +51,135 @@ def _rat_label(rat: str, bands: str) -> str:
     return rat or "未標"
 
 
-def index_page(store: Store) -> str:
+def _sel(name: str, current: str, options: list[str], all_label: str) -> str:
+    bits = [f'<option value="">{escape(all_label)}</option>']
+    for o in options:
+        sel = " selected" if o == current else ""
+        bits.append(f'<option value="{escape(o)}"{sel}>{escape(o)}</option>')
+    return f'<select name="{name}" onchange="this.form.submit()">{"".join(bits)}</select>'
+
+
+def index_page(
+    store: Store,
+    module: str = "",
+    project: str = "",
+    data_folder: str = "",
+    imei: str = "",
+) -> str:
     mods = store.list_modules()
     cards = []
     for m in mods:
-        href = "/db/module?name=" + quote(m["model"])
+        href = "/db?module=" + quote(m["model"])
         cards.append(
             f'<a class="card" href="{href}">'
             f"<h2>{escape(m['model'])}</h2>"
             f"<p>{m['projects']} 個專案 · {m['duts']} 個 IMEI · {m['sessions']} 份 session</p>"
+            f"<span class=\"muted\">管理專案：</span>"
+            f'<a href="/db/module?name={quote(m["model"])}">開啟</a>'
             "</a>"
+        )
+    projects = [p["name"] for p in store.list_projects(module)] if module else []
+    folders = store.list_folders(module, project) if module and project else []
+    imeis = sorted({r["imei"] for r in store.filter_sessions(module=module) if r.get("imei")})
+    rows = store.filter_sessions(module, project, data_folder, imei)
+    by_band: dict[str, list[dict]] = defaultdict(list)
+    for s in rows:
+        for band in [b for b in (s.get("bands") or "").split(",") if b]:
+            by_band[band].append(s)
+    grouped: dict[str, list[str]] = defaultdict(list)
+    for band in by_band:
+        grouped[nr_range_class(band)].append(band)
+    band_blocks = []
+    for cls in NR_RANGE_ORDER:
+        names = sorted(grouped.get(cls, []))
+        if not names:
+            continue
+        rows_html = []
+        for band in names:
+            files = by_band[band]
+            sources: list[str] = []
+            for f in files:
+                lab = plan_label(f.get("filename") or "")
+                if lab and lab not in sources:
+                    sources.append(lab)
+            ntxt = str(len(files))
+            if sources:
+                ntxt = f"{len(files)}（{', '.join(sources)}）"
+            rows_html.append(
+                "<tr>"
+                f"<td><label><input type=\"checkbox\" name=\"band\" value=\"{escape(band)}\" "
+                f"data-range=\"{escape(cls)}\" checked> {escape(band)}</label></td>"
+                f"<td>{escape(ntxt)}</td>"
+                "</tr>"
+            )
+        band_blocks.append(
+            f'<tbody class="band-group">'
+            f'<tr class="range-head"><td colspan="2"><b>{escape(cls)}</b></td></tr>'
+            + "".join(rows_html)
+            + "</tbody>"
+        )
+    file_rows = []
+    ids = []
+    for s in rows:
+        ids.append(str(s["id"]))
+        file_rows.append(
+            "<tr>"
+            f"<td>{escape(s.get('module') or '')}</td>"
+            f"<td>{escape(s.get('project') or '')}</td>"
+            f"<td>{escape(s.get('data_folder') or '')}</td>"
+            f"<td>{escape(s.get('imei') or '')}</td>"
+            f"<td>{escape(s.get('filename') or '')}</td>"
+            f"<td>{escape(s.get('bands') or '')}</td>"
+            f"<td class=\"{_vclass(s.get('overall_result') or '')}\">{escape(s.get('overall_result') or '')}</td>"
+            "</tr>"
         )
     body = f"""
 {_nav()}
 <h1>測試資料庫</h1>
-<p class="muted">從模組型號進入專案，再勾選 band 產出 <b>UXM</b> 報告。匯入只是進庫；出報告在這裡做。</p>
-<h2>新增模組</h2>
+<p class="muted">用篩選縮小範圍後，依 band 產出 Excel Report。匯入只是進庫；出報告在這裡做。</p>
+<form method="get" action="/db" class="filters">
+  <label>模組 {_sel("module", module, [m["model"] for m in mods], "全部模組")}</label>
+  <label>專案 {_sel("project", project, projects, "全部專案")}</label>
+  <label>資料夾 {_sel("data_folder", data_folder, folders, "全部資料夾")}</label>
+  <label>IMEI {_sel("imei", imei, imeis, "全部 IMEI")}</label>
+</form>
+<p class="muted">{len(rows)} 個檔符合目前篩選。</p>
+
+<h2>依Band產出Excel Report</h2>
+<p class="muted">band 列表只含上面篩出的檔。connection test 仍會列入，Excel 會獨立標註。</p>
+<table>
+<thead><tr><th>Band</th><th>檔數</th></tr></thead>
+{''.join(band_blocks) or '<tbody><tr><td colspan="2">沒有資料。請先匯入或放寬篩選。</td></tr></tbody>'}
+</table>
+<p style="margin-top:12px"><button type="button" id="exportBands">依Band產出Excel Report</button></p>
+<div id="status"></div>
+
+<h2>符合的檔</h2>
+<table>
+<tr><th>模組</th><th>專案</th><th>資料夾</th><th>IMEI</th><th>檔名</th><th>Band</th><th>Overall</th></tr>
+{''.join(file_rows) or '<tr><td colspan="7">沒有檔案。</td></tr>'}
+</table>
+
+<h2>模組</h2>
 <p class="row">
   <input id="newModule" type="text" placeholder="輸入新模組型號，例如 FN990A" style="max-width:280px">
   <button type="button" id="addModule">新增模組</button>
 </p>
-<p class="muted">先建空模組，之後匯入或改掛檔案時選這個型號即可。</p>
 <div class="cards">{''.join(cards) or '<p>還沒有資料。請先匯入或新增模組。</p>'}</div>
 <style>
+.filters {{ display:flex; flex-wrap:wrap; gap:12px 18px; margin:14px 0; align-items:end; }}
+.filters label {{ font-size:13px; }}
+.filters select {{ display:block; margin-top:4px; min-width:160px; }}
 .cards {{ display:flex; flex-wrap:wrap; gap:12px; margin-top:16px; }}
 .card {{ display:block; min-width:220px; padding:16px 18px; border:1px solid #ccc; text-decoration:none; color:#222; }}
 .card:hover {{ border-color:#008787; }}
 .card h2 {{ margin:0 0 6px; font-size:18px; color:#008787; }}
-.card p {{ margin:0; color:#666; font-size:13px; }}
+.card p {{ margin:0 0 8px; color:#666; font-size:13px; }}
 </style>
 <script>
+const sessionIds = {ids!r};
+const moduleName = {module!r};
+const projectName = {project!r};
 document.getElementById("addModule").onclick = async () => {{
   const name = document.getElementById("newModule").value.trim();
   if (!name) {{ alert("請輸入新模組型號"); return; }}
@@ -91,7 +190,35 @@ document.getElementById("addModule").onclick = async () => {{
   }});
   const j = await r.json();
   if (!r.ok) {{ alert(j.error || "新增失敗"); return; }}
-  location = "/db/module?name=" + encodeURIComponent(name);
+  location = "/db?module=" + encodeURIComponent(name);
+}};
+document.getElementById("exportBands").onclick = async () => {{
+  const bands = Array.from(document.querySelectorAll("input[name=band]:checked")).map((el) => el.value);
+  const status = document.getElementById("status");
+  if (!bands.length) {{ status.textContent = "請至少選一個 band"; status.className="err"; return; }}
+  if (!sessionIds.length) {{ status.textContent = "目前篩選沒有檔"; status.className="err"; return; }}
+  status.className = "";
+  status.textContent = "從資料庫產生 Excel Report…";
+  const r = await fetch("/api/report", {{
+    method: "POST",
+    headers: {{"Content-Type": "application/json"}},
+    body: JSON.stringify({{module: moduleName, project: projectName, bands, ids: sessionIds.map(Number)}})
+  }});
+  if (!r.ok) {{
+    const j = await r.json().catch(() => ({{error:"失敗"}}));
+    status.className = "err";
+    status.textContent = j.error || "產生失敗";
+    return;
+  }}
+  const name = r.headers.get("X-Filename") || "Excel Report.xlsx";
+  const blob = await r.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  status.className = "ok";
+  status.textContent = "已下載 " + name;
 }};
 </script>
 """
@@ -205,6 +332,7 @@ def project_page(store: Store, module: str, project: str) -> str:
             "<tr>"
             f"<td><input type=\"checkbox\" name=\"sid\" value=\"{s['id']}\"></td>"
             f"<td>{escape(s['filename'])}</td>"
+            f"<td>{escape(s.get('data_folder') or '')}</td>"
             f"<td>{escape(s['imei'])}</td>"
             f"<td>{escape(s.get('bands') or '')}</td>"
             f"<td>{escape(_rat_label(s.get('rat') or '', s.get('bands') or ''))}</td>"
@@ -230,7 +358,7 @@ def project_page(store: Store, module: str, project: str) -> str:
 <p><button type="button" class="danger" id="delProject">刪除這個專案</button></p>
 <p class="muted">會刪除此專案底下全部已匯入 session，不會刪磁碟 CSV。</p>
 
-<h2>依 band 產出 UXM Excel</h2>
+<h2>依Band產出Excel Report</h2>
 <p class="muted">勾選要進報告的 band。同一 band 若有多次量測（含重測）都會列入。檔數會標 Full Test 或 connection test；connection test 會進 Excel，並在 File／Note 獨立標出，不是完整 RF。</p>
 <p><label><input type="checkbox" id="groupBands" checked> 依 NR 低／中／高／超高頻分組</label>
 <span class="muted">（Low &lt;1 GHz、Mid 1–2.2 GHz、High ≥2.2 GHz 含 n78/n79、Ultra-high 僅 FR2）</span></p>
@@ -238,12 +366,12 @@ def project_page(store: Store, module: str, project: str) -> str:
 <thead><tr><th>Band</th><th>世代</th><th>報告型式</th><th>檔數</th></tr></thead>
 {''.join(band_blocks) or '<tbody><tr><td colspan="4">沒有 band 資料，請先匯入。</td></tr></tbody>'}
 </table>
-<p style="margin-top:12px"><button type="button" id="exportBands">產出 UXM Excel</button></p>
+<p style="margin-top:12px"><button type="button" id="exportBands">依Band產出Excel Report</button></p>
 <div id="status"></div>
 
 <h2>檔案（可改掛到別的專案）</h2>
 <table>
-<tr><th></th><th>檔名</th><th>IMEI</th><th>Band</th><th>世代</th><th>型式</th><th>Overall</th></tr>
+<tr><th></th><th>檔名</th><th>資料夾</th><th>IMEI</th><th>Band</th><th>世代</th><th>型式</th><th>Overall</th></tr>
 {''.join(file_rows)}
 </table>
 <p class="row" style="margin-top:12px">
@@ -252,9 +380,10 @@ def project_page(store: Store, module: str, project: str) -> str:
     {''.join(options)}
   </select>
   <input id="moveTo" type="text" placeholder="輸入新專案名稱" style="max-width:220px">
+  <input id="moveFolder" type="text" placeholder="資料夾（空白則沿用）" style="max-width:180px">
   <button type="button" class="secondary" id="moveBtn">把勾選的檔改掛過去</button>
 </p>
-<p class="muted">掛回舊專案請用左邊下拉。要新建才在右邊輸入新專案名稱；兩邊都填時以新名稱為準。</p>
+<p class="muted">可改專案與資料夾。資料夾空白則沿用原資料夾名（在目標專案底下建立同名）。</p>
 
 <script>
 const moduleName = {module!r};
@@ -296,7 +425,7 @@ document.getElementById("exportBands").onclick = async () => {{
   const bands = Array.from(document.querySelectorAll("input[name=band]:checked")).map((el) => el.value);
   if (!bands.length) {{ status.textContent = "請至少選一個 band"; status.className="err"; return; }}
   status.className = "";
-  status.textContent = "從資料庫產生 UXM Excel…";
+  status.textContent = "從資料庫產生 Excel Report…";
   const r = await post("/api/report", {{module: moduleName, project: projectName, bands}});
   if (!r.ok) {{
     const j = await r.json().catch(() => ({{error:"失敗"}}));
@@ -328,7 +457,8 @@ document.getElementById("moveBtn").onclick = async () => {{
   const ids = Array.from(document.querySelectorAll("input[name=sid]:checked")).map((el) => Number(el.value));
   if (!dest) {{ alert("請選擇已有專案，或輸入新專案名稱"); return; }}
   if (!ids.length) {{ alert("請勾選檔案"); return; }}
-  const r = await post("/api/move-sessions", {{module: moduleName, ids, project: dest}});
+  const destFolder = document.getElementById("moveFolder").value.trim();
+  const r = await post("/api/move-sessions", {{module: moduleName, ids, project: dest, data_folder: destFolder}});
   const j = await r.json();
   if (!r.ok) {{ alert(j.error || "移動失敗"); return; }}
   location.reload();

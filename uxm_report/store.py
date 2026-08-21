@@ -1,4 +1,4 @@
-"""Local SQLite store: module -> project -> IMEI -> session + raw CSV."""
+"""Local SQLite store: module -> project -> folder -> IMEI -> session + raw CSV."""
 
 from __future__ import annotations
 
@@ -26,9 +26,16 @@ CREATE TABLE IF NOT EXISTS duts (
     imei TEXT NOT NULL,
     UNIQUE(module_id, imei)
 );
+CREATE TABLE IF NOT EXISTS folders (
+    id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id),
+    name TEXT NOT NULL,
+    UNIQUE(project_id, name)
+);
 CREATE TABLE IF NOT EXISTS sessions (
     id INTEGER PRIMARY KEY,
     project_id INTEGER NOT NULL REFERENCES projects(id),
+    folder_id INTEGER NOT NULL REFERENCES folders(id),
     dut_id INTEGER NOT NULL REFERENCES duts(id),
     filename TEXT NOT NULL,
     start_time TEXT,
@@ -45,7 +52,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     source_kind TEXT NOT NULL DEFAULT 'csv',
     ta_major TEXT,
     parse_notes TEXT,
-    UNIQUE(project_id, dut_id, filename)
+    UNIQUE(folder_id, dut_id, filename)
 );
 CREATE TABLE IF NOT EXISTS test_rows (
     id INTEGER PRIMARY KEY,
@@ -134,7 +141,106 @@ class Store:
               AND id IN (SELECT session_id FROM test_rows WHERE band LIKE 'NR_%')
             """
         )
+        self._migrate_folders()
         self.conn.commit()
+
+    def _migrate_folders(self) -> None:
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS folders (
+                id INTEGER PRIMARY KEY,
+                project_id INTEGER NOT NULL REFERENCES projects(id),
+                name TEXT NOT NULL,
+                UNIQUE(project_id, name)
+            )
+            """
+        )
+        sess_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(sessions)")}
+        if "folder_id" in sess_cols:
+            for pid, in self.conn.execute("SELECT id FROM projects"):
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO folders(project_id, name) VALUES (?, 'UNKNOWN')",
+                    (pid,),
+                )
+            return
+        self.conn.commit()
+        self.conn.execute("PRAGMA foreign_keys=OFF")
+        self.conn.commit()
+        self.conn.execute("DROP TABLE IF EXISTS sessions_new")
+        for pid, in self.conn.execute("SELECT id FROM projects"):
+            self.conn.execute(
+                "INSERT OR IGNORE INTO folders(project_id, name) VALUES (?, 'UNKNOWN')",
+                (pid,),
+            )
+        self.conn.execute(
+            """
+            CREATE TABLE sessions_new (
+                id INTEGER PRIMARY KEY,
+                project_id INTEGER NOT NULL REFERENCES projects(id),
+                folder_id INTEGER NOT NULL REFERENCES folders(id),
+                dut_id INTEGER NOT NULL REFERENCES duts(id),
+                filename TEXT NOT NULL,
+                start_time TEXT,
+                stop_time TEXT,
+                test_plan TEXT,
+                ta_version TEXT,
+                rfa_version TEXT,
+                overall_result TEXT,
+                raw_csv TEXT NOT NULL,
+                instrument TEXT NOT NULL DEFAULT 'uxm',
+                report_kind TEXT NOT NULL DEFAULT 'uxm',
+                rat TEXT,
+                imported_at TEXT,
+                source_kind TEXT NOT NULL DEFAULT 'csv',
+                ta_major TEXT,
+                parse_notes TEXT,
+                UNIQUE(folder_id, dut_id, filename)
+            )
+            """
+        )
+        old = [r[1] for r in self.conn.execute("PRAGMA table_info(sessions)")]
+        copy = [
+            c
+            for c in (
+                "id",
+                "project_id",
+                "dut_id",
+                "filename",
+                "start_time",
+                "stop_time",
+                "test_plan",
+                "ta_version",
+                "rfa_version",
+                "overall_result",
+                "raw_csv",
+                "instrument",
+                "report_kind",
+                "rat",
+                "imported_at",
+                "source_kind",
+                "ta_major",
+                "parse_notes",
+            )
+            if c in old
+        ]
+        col_sql = ", ".join(copy)
+        self.conn.execute(
+            f"""
+            INSERT INTO sessions_new (
+                {col_sql}, folder_id
+            )
+            SELECT {col_sql},
+                   (SELECT f.id FROM folders f
+                    WHERE f.project_id = sessions.project_id AND f.name='UNKNOWN')
+            FROM sessions
+            """
+        )
+        self.conn.execute("DROP TABLE sessions")
+        self.conn.execute("ALTER TABLE sessions_new RENAME TO sessions")
+        self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_folder ON sessions(folder_id)"
+        )
+        self.conn.execute("PRAGMA foreign_keys=ON")
 
     def close(self) -> None:
         self.conn.close()
@@ -158,6 +264,31 @@ class Store:
     def set_project_name(self, project_id: int, name: str) -> None:
         self.conn.execute("UPDATE projects SET name=? WHERE id=?", (name, project_id))
 
+    def upsert_folder(self, project_id: int, name: str) -> int:
+        name = (name or "").strip() or "UNKNOWN"
+        self.conn.execute(
+            "INSERT OR IGNORE INTO folders(project_id, name) VALUES (?, ?)",
+            (project_id, name),
+        )
+        row = self.conn.execute(
+            "SELECT id FROM folders WHERE project_id=? AND name=?",
+            (project_id, name),
+        ).fetchone()
+        return int(row[0])
+
+    def list_folders(self, module: str, project: str) -> list[str]:
+        rows = self.conn.execute(
+            """
+            SELECT f.name FROM folders f
+            JOIN projects p ON p.id=f.project_id
+            JOIN modules m ON m.id=p.module_id
+            WHERE m.model=? AND p.name=?
+            ORDER BY f.name
+            """,
+            (module, project),
+        ).fetchall()
+        return [r[0] for r in rows]
+
     def upsert_dut(self, module_id: int, imei: str) -> int:
         self.conn.execute(
             "INSERT OR IGNORE INTO duts(module_id, imei) VALUES (?, ?)",
@@ -169,9 +300,16 @@ class Store:
         ).fetchone()
         return int(row[0])
 
-    def import_session(self, session: Session, module_model: str, project: str) -> int:
+    def import_session(
+        self,
+        session: Session,
+        module_model: str,
+        project: str,
+        data_folder: str = "",
+    ) -> int:
         module_id = self.upsert_module(module_model)
         project_id = self.upsert_project(module_id, project)
+        folder_id = self.upsert_folder(project_id, data_folder)
         imei = session.header.get("IMEI") or "UNKNOWN"
         dut_id = self.upsert_dut(module_id, imei)
         if session.raw_text:
@@ -187,12 +325,12 @@ class Store:
         self.conn.execute(
             """
             INSERT INTO sessions(
-                project_id, dut_id, filename, start_time, stop_time, test_plan,
+                project_id, folder_id, dut_id, filename, start_time, stop_time, test_plan,
                 ta_version, rfa_version, overall_result, raw_csv,
                 instrument, report_kind, rat, imported_at,
                 source_kind, ta_major, parse_notes
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','localtime'),?,?,?)
-            ON CONFLICT(project_id, dut_id, filename) DO UPDATE SET
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','localtime'),?,?,?)
+            ON CONFLICT(folder_id, dut_id, filename) DO UPDATE SET
                 start_time=excluded.start_time,
                 stop_time=excluded.stop_time,
                 test_plan=excluded.test_plan,
@@ -209,6 +347,7 @@ class Store:
             """,
             (
                 project_id,
+                folder_id,
                 dut_id,
                 session.filename,
                 session.header.get("Start Time"),
@@ -227,8 +366,8 @@ class Store:
             ),
         )
         row = self.conn.execute(
-            "SELECT id FROM sessions WHERE project_id=? AND dut_id=? AND filename=?",
-            (project_id, dut_id, session.filename),
+            "SELECT id FROM sessions WHERE folder_id=? AND dut_id=? AND filename=?",
+            (folder_id, dut_id, session.filename),
         ).fetchone()
         session_id = int(row[0])
         self.conn.execute("DELETE FROM test_rows WHERE session_id=?", (session_id,))
@@ -309,6 +448,13 @@ class Store:
         self.conn.commit()
         return cur.rowcount > 0
 
+    def delete_sessions(self, session_ids: list[int]) -> int:
+        n = 0
+        for sid in session_ids:
+            if self.delete_session(int(sid)):
+                n += 1
+        return n
+
     def lineage_events(self, module: str | None = None) -> list[dict]:
         sql = """
             SELECT s.id AS session_id, s.filename, s.start_time, dut.imei,
@@ -341,7 +487,7 @@ class Store:
     def list_sessions(self) -> list[dict]:
         rows = self.conn.execute(
             """
-            SELECT s.id, m.model, p.name, d.imei, s.filename, s.start_time,
+            SELECT s.id, m.model, p.name, COALESCE(f.name,'UNKNOWN'), d.imei, s.filename, s.start_time,
                    s.imported_at, s.overall_result, s.test_plan,
                    s.ta_version, s.ta_major, s.source_kind, s.parse_notes,
                    (SELECT COUNT(*) FROM test_rows t WHERE t.session_id=s.id) AS n_sum,
@@ -351,13 +497,15 @@ class Store:
             JOIN projects p ON p.id=s.project_id
             JOIN modules m ON m.id=p.module_id
             JOIN duts d ON d.id=s.dut_id
-            ORDER BY m.model, p.name, s.imported_at, s.start_time, s.filename
+            LEFT JOIN folders f ON f.id=s.folder_id
+            ORDER BY m.model, p.name, f.name, s.imported_at, s.start_time, s.filename
             """
         ).fetchall()
         keys = (
             "id",
             "module",
             "project",
+            "data_folder",
             "imei",
             "filename",
             "start_time",
@@ -377,13 +525,15 @@ class Store:
     def session_header(self, session_id: int) -> dict | None:
         row = self.conn.execute(
             """
-            SELECT s.id, m.model, p.name, d.imei, s.filename, s.start_time, s.stop_time,
+            SELECT s.id, m.model, p.name, COALESCE(f.name,'UNKNOWN'), d.imei, s.filename,
+                   s.start_time, s.stop_time,
                    s.imported_at, s.test_plan, s.ta_version, s.rfa_version, s.overall_result,
                    s.ta_major, s.source_kind, s.parse_notes
             FROM sessions s
             JOIN projects p ON p.id=s.project_id
             JOIN modules m ON m.id=p.module_id
             JOIN duts d ON d.id=s.dut_id
+            LEFT JOIN folders f ON f.id=s.folder_id
             WHERE s.id=?
             """,
             (session_id,),
@@ -394,6 +544,7 @@ class Store:
             "id",
             "module",
             "project",
+            "data_folder",
             "imei",
             "filename",
             "start_time",
@@ -572,16 +723,17 @@ class Store:
         rows = self.conn.execute(
             """
             SELECT s.id, s.filename, dut.imei, s.start_time, s.overall_result,
-                   s.instrument, s.report_kind, s.rat,
+                   s.instrument, s.report_kind, s.rat, COALESCE(f.name,'UNKNOWN'),
                    GROUP_CONCAT(DISTINCT t.band) AS bands
             FROM sessions s
             JOIN projects p ON p.id=s.project_id
             JOIN modules m ON m.id=p.module_id
             JOIN duts dut ON dut.id=s.dut_id
+            LEFT JOIN folders f ON f.id=s.folder_id
             LEFT JOIN test_rows t ON t.session_id=s.id
             WHERE m.model=? AND p.name=?
             GROUP BY s.id
-            ORDER BY s.filename
+            ORDER BY f.name, s.filename
             """,
             (module, project),
         ).fetchall()
@@ -592,6 +744,56 @@ class Store:
             "start_time",
             "overall_result",
             "instrument",
+            "report_kind",
+            "rat",
+            "data_folder",
+            "bands",
+        )
+        return [dict(zip(keys, r)) for r in rows]
+
+    def filter_sessions(
+        self,
+        module: str = "",
+        project: str = "",
+        data_folder: str = "",
+        imei: str = "",
+    ) -> list[dict]:
+        sql = """
+            SELECT s.id, m.model, p.name, COALESCE(f.name,'UNKNOWN'), dut.imei,
+                   s.filename, s.start_time, s.overall_result, s.report_kind, s.rat,
+                   GROUP_CONCAT(DISTINCT t.band) AS bands
+            FROM sessions s
+            JOIN projects p ON p.id=s.project_id
+            JOIN modules m ON m.id=p.module_id
+            JOIN duts dut ON dut.id=s.dut_id
+            LEFT JOIN folders f ON f.id=s.folder_id
+            LEFT JOIN test_rows t ON t.session_id=s.id
+            WHERE 1=1
+        """
+        args: list = []
+        if module:
+            sql += " AND m.model=?"
+            args.append(module)
+        if project:
+            sql += " AND p.name=?"
+            args.append(project)
+        if data_folder:
+            sql += " AND f.name=?"
+            args.append(data_folder)
+        if imei:
+            sql += " AND dut.imei=?"
+            args.append(imei)
+        sql += " GROUP BY s.id ORDER BY m.model, p.name, f.name, s.filename"
+        rows = self.conn.execute(sql, args).fetchall()
+        keys = (
+            "id",
+            "module",
+            "project",
+            "data_folder",
+            "imei",
+            "filename",
+            "start_time",
+            "overall_result",
             "report_kind",
             "rat",
             "bands",
@@ -655,13 +857,20 @@ class Store:
                 out.append((row[0], row[1]))
         return out
 
-    def move_session_project(self, session_id: int, module: str, new_project: str) -> None:
+    def move_session_project(
+        self,
+        session_id: int,
+        module: str,
+        new_project: str,
+        new_folder: str = "",
+    ) -> None:
         name = (new_project or "").strip() or "UNKNOWN"
         row = self.conn.execute(
             """
-            SELECT m.id FROM sessions s
+            SELECT m.id, COALESCE(f.name,'UNKNOWN') FROM sessions s
             JOIN projects p ON p.id=s.project_id
             JOIN modules m ON m.id=p.module_id
+            LEFT JOIN folders f ON f.id=s.folder_id
             WHERE s.id=? AND m.model=?
             """,
             (session_id, module),
@@ -669,9 +878,11 @@ class Store:
         if not row:
             raise ValueError("找不到這個 session 或不屬於該模組")
         project_id = self.upsert_project(int(row[0]), name)
+        folder_name = (new_folder or "").strip() or row[1] or "UNKNOWN"
+        folder_id = self.upsert_folder(project_id, folder_name)
         self.conn.execute(
-            "UPDATE sessions SET project_id=? WHERE id=?",
-            (project_id, session_id),
+            "UPDATE sessions SET project_id=?, folder_id=? WHERE id=?",
+            (project_id, folder_id, session_id),
         )
         self.conn.commit()
 
@@ -696,11 +907,24 @@ class Store:
             (mid, new),
         ).fetchone()
         if dst:
-            self.conn.execute(
-                "UPDATE sessions SET project_id=? WHERE project_id=?",
-                (int(dst[0]), int(src[0])),
-            )
-            self.conn.execute("DELETE FROM projects WHERE id=?", (int(src[0]),))
+            dest_id = int(dst[0])
+            src_id = int(src[0])
+            for sid, fname in self.conn.execute(
+                """
+                SELECT s.id, COALESCE(f.name,'UNKNOWN')
+                FROM sessions s
+                LEFT JOIN folders f ON f.id=s.folder_id
+                WHERE s.project_id=?
+                """,
+                (src_id,),
+            ):
+                fid = self.upsert_folder(dest_id, fname)
+                self.conn.execute(
+                    "UPDATE sessions SET project_id=?, folder_id=? WHERE id=?",
+                    (dest_id, fid, sid),
+                )
+            self.conn.execute("DELETE FROM folders WHERE project_id=?", (src_id,))
+            self.conn.execute("DELETE FROM projects WHERE id=?", (src_id,))
         else:
             self.conn.execute(
                 "UPDATE projects SET name=? WHERE id=?",
@@ -731,6 +955,7 @@ class Store:
             self.conn.execute("DELETE FROM detail_rows WHERE session_id=?", (sid,))
             self.conn.execute("DELETE FROM test_rows WHERE session_id=?", (sid,))
         self.conn.execute("DELETE FROM sessions WHERE project_id=?", (pid,))
+        self.conn.execute("DELETE FROM folders WHERE project_id=?", (pid,))
         self.conn.execute("DELETE FROM projects WHERE id=?", (pid,))
         self.conn.commit()
         return len(ids)
