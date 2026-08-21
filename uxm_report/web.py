@@ -636,10 +636,18 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(raw)
             return
         if parsed.path == "/analysis/module":
-            name = (parse_qs(parsed.query).get("name") or [""])[0]
+            qs = parse_qs(parsed.query)
+            name = (qs.get("name") or [""])[0]
+            applied = (qs.get("applied") or [""])[0] == "1"
+            ids: list[int] = []
+            for x in qs.get("id") or []:
+                try:
+                    ids.append(int(x))
+                except (TypeError, ValueError):
+                    continue
             store = Store(ROOT / "uxm.db")
             try:
-                html = analysis_module(store, name)
+                html = analysis_module(store, name, session_ids=ids if applied else None)
             finally:
                 store.close()
             raw = html.encode("utf-8")

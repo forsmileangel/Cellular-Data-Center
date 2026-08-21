@@ -212,10 +212,13 @@ def build_report(
             row.append(_cell_ranges(col.by_test.get(name, {})))
         data_rows.append(row)
 
-    # Summary: one row per test, bands first-seen across columns
+    # Summary: identity rows then one row per test
     summary_rows: list[list[str | None]] = []
-    imei_line = "IMEI:" + "/".join(imeis) if imeis else "IMEI:"
-    summary_rows.append([imei_line, None, None, None, None])
+    proj_label = project if project and project not in {"UNKNOWN", "Report"} else project or "全部"
+    imei_line = "/".join(imeis) if imeis else ""
+    summary_rows.append([f"模組名稱：{module_model}", None, None, None, None])
+    summary_rows.append([f"專案名稱：{proj_label}", None, None, None, None])
+    summary_rows.append([f"IMEI：{imei_line}", None, None, None, None])
     summary_rows.append(["Test Case Name", "Band", "Result", "Fail iteams", "Notes"])
     notes: list[str] = []
     for name in test_names:

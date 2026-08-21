@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from typing import Iterable
 
 
+UNSET_ABS = 1e20
+
+
 def to_float(raw: str | None) -> float | None:
     if raw is None:
         return None
@@ -16,6 +19,18 @@ def to_float(raw: str | None) -> float | None:
         return float(text)
     except ValueError:
         return None
+
+
+def is_unset_value(raw: str | None, value: float | None = None) -> bool:
+    """Keysight unused readings (e.g. -9.91e+37) or NaN are not real measurements."""
+    text = str(raw or "").strip().lower()
+    if text in {"nan", "inf", "-inf", "n/a", "none"}:
+        return True
+    if value is None:
+        value = to_float(raw)
+    if value is None:
+        return False
+    return abs(value) >= UNSET_ABS
 
 
 def limit_float(raw: str | None) -> float | None:
@@ -47,6 +62,8 @@ class Point:
     nearest: float | None = None
     pos: float | None = None  # 0=LSL, 1=USL
     side: str = ""  # lower / upper / mid / unknown
+    raw_value: str = ""
+    unset: bool = False
 
 
 def decorate(point: Point) -> Point:
@@ -75,13 +92,15 @@ def decorate(point: Point) -> Point:
 
 
 def from_row(row: dict) -> Point | None:
-    value = to_float(row.get("value"))
-    if value is None:
-        return None
     if (row.get("pf") or "") not in {"Pass", "Fail"}:
         return None
+    raw = row.get("value")
+    value = to_float(raw)
+    unset = is_unset_value(raw, value)
+    if not unset and value is None:
+        return None
     point = Point(
-        value=value,
+        value=0.0 if value is None else value,
         lsl=limit_float(row.get("lower_limit")),
         usl=limit_float(row.get("upper_limit")),
         unit=row.get("unit") or "",
@@ -93,7 +112,11 @@ def from_row(row: dict) -> Point | None:
         imei=row.get("imei") or "",
         session_id=int(row.get("session_id") or 0),
         filename=row.get("filename") or "",
+        raw_value=str(raw or "").strip(),
+        unset=unset,
     )
+    if point.unset:
+        return point
     if point.lsl is None and point.usl is None:
         return None
     return decorate(point)
@@ -112,6 +135,8 @@ class Bias:
 def summarize(points: Iterable[Point]) -> Bias:
     bias = Bias()
     for point in points:
+        if point.unset:
+            continue
         if point.pf == "Fail":
             bias.fail += 1
         if point.pos is None:

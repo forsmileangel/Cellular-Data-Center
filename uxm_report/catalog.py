@@ -51,8 +51,8 @@ def _tabs(
     ccls = "tab on" if current == "charts" else "tab"
     return (
         '<p class="tabs">'
-        f'<a class="{rcls}" href="{report}">報告</a>'
-        f'<a class="{ccls}" href="{charts}">圖</a>'
+        f'<a class="{rcls}" href="{report}">報告總覽</a>'
+        f'<a class="{ccls}" href="{charts}">統計圖表</a>'
         "</p>"
         "<style>"
         ".tabs { margin:12px 0 18px; }"
@@ -164,7 +164,7 @@ def index_page(store: Store, **_unused) -> str:
     body = f"""
 {_nav()}
 <h1>測試資料庫</h1>
-<p class="muted">先選模組（點卡片）。進去之後才有<strong>報告</strong>和<strong>圖</strong>；可再篩專案、資料夾、IMEI。</p>
+<p class="muted">先選模組（點卡片）。進去之後才有<strong>報告總覽</strong>和<strong>統計圖表</strong>；可再篩專案、資料夾、IMEI。</p>
 <div class="cards">{''.join(cards) or '<p>還沒有資料。請先匯入或新增模組。</p>'}</div>
 <h2>新增模組</h2>
 <p class="row">

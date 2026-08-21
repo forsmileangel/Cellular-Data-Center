@@ -58,14 +58,13 @@ class WebPageTests(unittest.TestCase):
         store = Store(":memory:")
         store.upsert_module("FN990")
         html = work_page(store, module="FN990")
-        self.assertIn(">報告<", html)
-        self.assertIn(">圖<", html)
+        self.assertIn("報告總覽", html)
+        self.assertIn("統計圖表", html)
         self.assertIn("依Band產出Excel Report", html)
         self.assertIn("exportSid", html)
         self.assertIn("reportTitle", html)
         html_c = work_page(store, module="FN990", tab="charts")
-        self.assertIn("tab=charts", html_c) or True
-        self.assertIn(">圖<", html_c)
+        self.assertIn("統計圖表", html_c)
 
     def test_catalog_payload_lists_module_projects(self):
         from uxm_report.store import Store

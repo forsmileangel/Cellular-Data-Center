@@ -59,6 +59,9 @@ th { background:#eef6f6; }
 .name-box input[type=text] { display:block; margin-top:4px; min-width:240px; }
 .name-box .chk { font-weight:normal; font-size:13px; }
 #namePreview { width:100%; margin:0; }
+.file-drop { margin:12px 0; padding:8px 10px; border:1px solid var(--line); background:#fff; }
+.file-list { display:flex; flex-direction:column; gap:4px; max-height:240px; overflow:auto; margin-top:8px; }
+.file-pick { font-weight:normal; font-size:13px; }
 .meta { font-size:14px; margin:0 0 12px; }
 .filters a { margin-right:10px; }
 .bar { display:inline-block; position:relative; width:90px; height:10px; background:#eee; border:1px solid #ccc; vertical-align:middle; }

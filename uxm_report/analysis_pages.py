@@ -28,6 +28,30 @@ def _fmt(x: float | None) -> str:
     return f"{x:.3g}"
 
 
+def _unset_table(points: list[Point], limit: int = 80) -> str:
+    if not points:
+        return '<p class="muted">沒有沒量到的點。</p>'
+    rows = []
+    for p in points[:limit]:
+        rows.append(
+            "<tr>"
+            f"<td>{escape(p.test_case)}</td>"
+            f"<td>{escape(p.item)}</td>"
+            f"<td>{escape(p.band)}</td>"
+            f"<td>{escape(p.raw_value or _fmt(p.value))}</td>"
+            f"<td class=\"{_vclass(p.pf)}\">{escape(p.pf)}</td>"
+            f"<td>{escape(p.filename)}</td>"
+            "</tr>"
+        )
+    extra = f'<p class="muted">共 {len(points)} 點，下表最多 {limit}。</p>' if len(points) > limit else ""
+    return (
+        extra
+        + "<table><tr><th>測項</th><th>Item</th><th>Band</th><th>原始 Value</th><th>P/F</th><th>檔名</th></tr>"
+        + "".join(rows)
+        + "</table>"
+    )
+
+
 def _table(points: list[Point], limit: int = 40) -> str:
     rows = []
     for p in points[:limit]:
@@ -57,9 +81,16 @@ def _table(points: list[Point], limit: int = 40) -> str:
     )
 
 
-def _load(store: Store, session_id: int | None = None, module: str | None = None) -> list[Point]:
+def _load(
+    store: Store,
+    session_id: int | None = None,
+    module: str | None = None,
+    session_ids: list[int] | None = None,
+) -> list[Point]:
     points: list[Point] = []
-    for row in store.measure_rows(session_id=session_id, module=module):
+    for row in store.measure_rows(
+        session_id=session_id, module=module, session_ids=session_ids
+    ):
         point = from_row(row)
         if point:
             points.append(point)
@@ -87,7 +118,7 @@ def analysis_index(store: Store) -> str:
 </div>
 <h2>依模組</h2>
 <ul>{links or "<li>資料庫是空的</li>"}</ul>
-<h2>依 session</h2>
+<h2>依檔案</h2>
 <ul>{slinks}</ul>
 """
     return _page("資料分析", body)
@@ -101,12 +132,14 @@ def _retry_note(point: Point, links) -> str:
 
 
 def _report(title: str, nav: str, points: list[Point], extra: str = "", links=None) -> str:
-    bias = summarize(points)
+    measured = [p for p in points if not p.unset]
+    unset_pts = [p for p in points if p.unset]
+    bias = summarize(measured)
     tight = sorted(
-        [p for p in points if p.nearest is not None],
+        [p for p in measured if p.nearest is not None],
         key=lambda p: p.nearest,
     )[:25]
-    fails = [p for p in points if p.pf == "Fail"]
+    fails = [p for p in measured if p.pf == "Fail"]
     links = links or {}
     open_f, closed_f = [], []
     for p in fails:
@@ -127,8 +160,11 @@ def _report(title: str, nav: str, points: list[Point], extra: str = "", links=No
 </div>
 {extra}
 <h2>最貼限的 25 點（含 Pass）</h2>
-<p class="muted">margin 愈小愈危險。用來找「過了但很貼」的設計風險。</p>
+<p class="muted">只看<strong>有量到數字</strong>、且有上下限的點。margin 愈小愈危險，用來找「過了但很貼」的風險。Keysight 沒量到的值（例如 −9.91e+37）不在這裡。</p>
 {_table(tight, 25)}
+<h2>沒量到的點</h2>
+<p class="muted">Value 是 NaN 或 ±9.91e+37 這類哨兵，儀器沒讀到有效數字，不當成貼限。</p>
+{_unset_table(unset_pts)}
 <h2>未結的 Fail</h2>
 {_table(open_f, 40)}
 <h2>已重測過的 Fail（後來有 Pass，僅供追溯）</h2>
@@ -137,8 +173,43 @@ def _report(title: str, nav: str, points: list[Point], extra: str = "", links=No
     return _page(title, body)
 
 
-def analysis_module(store: Store, name: str) -> str:
-    points = _load(store, module=name)
+def analysis_module(store: Store, name: str, session_ids: list[int] | None = None) -> str:
+    files = [r for r in store.list_sessions() if r["module"] == name]
+    selected = session_ids
+    if not selected:
+        selected = [int(r["id"]) for r in files]
+    selected_set = {int(x) for x in selected}
+    boxes = []
+    for r in files:
+        sid = int(r["id"])
+        chk = " checked" if sid in selected_set else ""
+        boxes.append(
+            f'<label class="file-pick"><input type="checkbox" name="id" value="{sid}"{chk}> '
+            f'{escape(r["filename"])} <span class="muted">({escape(r.get("data_folder") or "")} '
+            f'{escape(r["overall_result"] or "")})</span></label>'
+        )
+    picker = f"""
+<details class="file-drop">
+<summary>分析哪些檔（已選 {len(selected_set)} / {len(files)}）</summary>
+<p class="row">
+  <button type="button" class="secondary" id="anAll">全選</button>
+  <button type="button" class="secondary" id="anNone">全不選</button>
+  <button type="button" class="secondary" id="anInv">反選</button>
+  <button type="submit">套用</button>
+</p>
+<div class="file-list">{''.join(boxes) or '<p class="muted">這個模組沒有檔。</p>'}</div>
+</details>
+<script>
+const boxes = () => document.querySelectorAll('.file-list input[name=id]');
+const anAll = document.getElementById("anAll");
+const anNone = document.getElementById("anNone");
+const anInv = document.getElementById("anInv");
+if (anAll) anAll.onclick = (e) => {{ e.preventDefault(); boxes().forEach((el) => {{ el.checked = true; }}); }};
+if (anNone) anNone.onclick = (e) => {{ e.preventDefault(); boxes().forEach((el) => {{ el.checked = false; }}); }};
+if (anInv) anInv.onclick = (e) => {{ e.preventDefault(); boxes().forEach((el) => {{ el.checked = !el.checked; }}); }};
+</script>
+"""
+    points = _load(store, module=name, session_ids=selected or None)
     events = store.lineage_events(module=name)
     links = build_links(events)
     latest = latest_verdict(events)
@@ -157,6 +228,10 @@ def analysis_module(store: Store, name: str) -> str:
             "</tr>"
         )
     extra = (
+        f'<form method="get" action="/analysis/module">'
+        f'<input type="hidden" name="name" value="{escape(name)}">'
+        f'<input type="hidden" name="applied" value="1">'
+        f"{picker}</form>"
         "<h2>重測之後仍未過的摘要項</h2>"
         "<p class=\"muted\">每個 IMEI＋band＋測項＋LMH 只留時間最晚的那一筆。這裡才比較接近「整體還有沒有掛著」。</p>"
         + (

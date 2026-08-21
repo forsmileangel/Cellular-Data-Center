@@ -627,6 +627,7 @@ class Store:
         self,
         session_id: int | None = None,
         module: str | None = None,
+        session_ids: list[int] | None = None,
     ) -> list[dict]:
         sql = """
             SELECT s.id AS session_id, s.filename, m.model, d.imei,
@@ -643,6 +644,12 @@ class Store:
         if session_id:
             sql += " AND s.id=?"
             args.append(session_id)
+        if session_ids is not None:
+            if not session_ids:
+                return []
+            placeholders = ",".join("?" * len(session_ids))
+            sql += f" AND s.id IN ({placeholders})"
+            args.extend(int(x) for x in session_ids)
         if module:
             sql += " AND m.model=?"
             args.append(module)
