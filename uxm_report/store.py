@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from .interpret import meaning_of, skip_note
-from .parse import Session, bw_mhz, session_rat
+from .parse import Session, bw_mhz, session_rat, ta_major
 from .spec import classify_channels
 
 SCHEMA = """
@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     report_kind TEXT NOT NULL DEFAULT 'uxm',
     rat TEXT,
     imported_at TEXT,
+    source_kind TEXT NOT NULL DEFAULT 'csv',
+    ta_major TEXT,
+    parse_notes TEXT,
     UNIQUE(project_id, dut_id, filename)
 );
 CREATE TABLE IF NOT EXISTS test_rows (
@@ -111,9 +114,19 @@ class Store:
             ("report_kind", "TEXT NOT NULL DEFAULT 'uxm'"),
             ("rat", "TEXT"),
             ("imported_at", "TEXT"),
+            ("source_kind", "TEXT NOT NULL DEFAULT 'csv'"),
+            ("ta_major", "TEXT"),
+            ("parse_notes", "TEXT"),
         ):
             if name not in sess_cols:
                 self.conn.execute(f"ALTER TABLE sessions ADD COLUMN {name} {decl}")
+        for sid, ver in self.conn.execute(
+            "SELECT id, ta_version FROM sessions WHERE ta_major IS NULL OR ta_major=''"
+        ):
+            self.conn.execute(
+                "UPDATE sessions SET ta_major=? WHERE id=?",
+                (ta_major(ver or ""), sid),
+            )
         self.conn.execute(
             """
             UPDATE sessions SET rat='NR'
@@ -161,18 +174,24 @@ class Store:
         project_id = self.upsert_project(module_id, project)
         imei = session.header.get("IMEI") or "UNKNOWN"
         dut_id = self.upsert_dut(module_id, imei)
-        if session.path.is_file():
+        if session.raw_text:
+            raw = session.raw_text
+        elif session.path.is_file() and session.path.suffix.lower() != ".pdf":
             raw = session.path.read_text(encoding="utf-8", errors="replace")
         else:
-            raw = "\n".join([])
+            raw = ""
         rat = session_rat(session)
+        kind = session.source_kind or "csv"
+        major = ta_major(session.header.get("TA Version") or "")
+        notes = session.parse_notes or ""
         self.conn.execute(
             """
             INSERT INTO sessions(
                 project_id, dut_id, filename, start_time, stop_time, test_plan,
                 ta_version, rfa_version, overall_result, raw_csv,
-                instrument, report_kind, rat, imported_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','localtime'))
+                instrument, report_kind, rat, imported_at,
+                source_kind, ta_major, parse_notes
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now','localtime'),?,?,?)
             ON CONFLICT(project_id, dut_id, filename) DO UPDATE SET
                 start_time=excluded.start_time,
                 stop_time=excluded.stop_time,
@@ -183,7 +202,10 @@ class Store:
                 raw_csv=excluded.raw_csv,
                 instrument=excluded.instrument,
                 report_kind=excluded.report_kind,
-                rat=excluded.rat
+                rat=excluded.rat,
+                source_kind=excluded.source_kind,
+                ta_major=excluded.ta_major,
+                parse_notes=excluded.parse_notes
             """,
             (
                 project_id,
@@ -199,6 +221,9 @@ class Store:
                 "uxm",
                 "uxm",
                 rat,
+                kind,
+                major,
+                notes,
             ),
         )
         row = self.conn.execute(
@@ -318,6 +343,7 @@ class Store:
             """
             SELECT s.id, m.model, p.name, d.imei, s.filename, s.start_time,
                    s.imported_at, s.overall_result, s.test_plan,
+                   s.ta_version, s.ta_major, s.source_kind, s.parse_notes,
                    (SELECT COUNT(*) FROM test_rows t WHERE t.session_id=s.id) AS n_sum,
                    (SELECT COUNT(*) FROM detail_rows x WHERE x.session_id=s.id) AS n_det,
                    (SELECT COUNT(*) FROM detail_rows x WHERE x.session_id=s.id AND x.pf='Fail') AS n_fail
@@ -338,6 +364,10 @@ class Store:
             "imported_at",
             "overall_result",
             "test_plan",
+            "ta_version",
+            "ta_major",
+            "source_kind",
+            "parse_notes",
             "n_sum",
             "n_det",
             "n_fail",
@@ -348,7 +378,8 @@ class Store:
         row = self.conn.execute(
             """
             SELECT s.id, m.model, p.name, d.imei, s.filename, s.start_time, s.stop_time,
-                   s.imported_at, s.test_plan, s.ta_version, s.rfa_version, s.overall_result
+                   s.imported_at, s.test_plan, s.ta_version, s.rfa_version, s.overall_result,
+                   s.ta_major, s.source_kind, s.parse_notes
             FROM sessions s
             JOIN projects p ON p.id=s.project_id
             JOIN modules m ON m.id=p.module_id
@@ -372,6 +403,9 @@ class Store:
             "ta_version",
             "rfa_version",
             "overall_result",
+            "ta_major",
+            "source_kind",
+            "parse_notes",
         )
         return dict(zip(keys, row))
 

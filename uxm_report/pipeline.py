@@ -34,7 +34,7 @@ def run_ingest(
         raise FileNotFoundError(f"找不到資料夾: {folder}")
     sessions = parse_selected(folder, files)
     if not sessions:
-        raise ValueError("沒有選到任何 CSV")
+        raise ValueError("沒有選到任何報告檔")
     root = Path(__file__).resolve().parents[1]
     db_path = Path(db) if db else root / "uxm.db"
     store = Store(db_path)
@@ -65,7 +65,7 @@ def run_build(
         raise FileNotFoundError(f"找不到資料夾: {folder}")
     sessions = parse_selected(folder, files)
     if not sessions:
-        raise ValueError("沒有選到任何 CSV")
+        raise ValueError("沒有選到任何報告檔")
 
     root = Path(__file__).resolve().parents[1]
     db_path = Path(db) if db else root / "uxm.db"

@@ -1,4 +1,4 @@
-"""Parse Keysight UXM / RFA CSV session files."""
+"""Parse Keysight UXM / RFA CSV and PDF session files."""
 
 from __future__ import annotations
 
@@ -69,6 +69,9 @@ class Session:
     header: dict[str, str]
     modes: list[TestMode]
     details: list[DetailRow] = field(default_factory=list)
+    source_kind: str = "csv"
+    parse_notes: str = ""
+    raw_text: str = ""
 
 
 def _test_name(tcn: str, name: str) -> str:
@@ -215,27 +218,60 @@ def parse_lines(lines: list[str], path: Path, filename: str) -> Session:
     )
 
 
+def ta_major(version: str) -> str:
+    m = re.match(r"\s*(\d+)", version or "")
+    return m.group(1) if m else ""
+
+
+def _is_session_file(path: Path) -> bool:
+    if path.name.lower().startswith("bandcombinations"):
+        return False
+    return path.suffix.lower() in {".csv", ".pdf"}
+
+
+def list_report_files(folder: str | Path) -> list[Path]:
+    folder = Path(folder)
+    if not folder.is_dir():
+        return []
+    return sorted(
+        (p for p in folder.iterdir() if p.is_file() and _is_session_file(p)),
+        key=lambda p: p.name,
+    )
+
+
+def parse_file(path: str | Path) -> Session:
+    path = Path(path)
+    if path.suffix.lower() == ".pdf":
+        from .pdf_rfa import parse_pdf
+
+        return parse_pdf(path)
+    return parse_csv(path)
+
+
 def parse_folder(folder: str | Path) -> list[Session]:
-    return parse_selected(folder, None)
+    folder = Path(folder).resolve()
+    files = sorted(p for p in folder.glob("*.csv") if _is_session_file(p))
+    return [parse_csv(p) for p in files]
 
 
 def parse_selected(folder: str | Path, names: list[str] | None) -> list[Session]:
     folder = Path(folder).resolve()
     if names is None:
-        files = sorted(folder.glob("*.csv"))
-        return [parse_csv(p) for p in files]
+        return [parse_file(p) for p in list_report_files(folder)]
     if not names:
         return []
     files = []
     for name in names:
         path = (folder / Path(name).name).resolve()
-        if path.parent != folder or path.suffix.lower() != ".csv":
+        if path.parent != folder or path.suffix.lower() not in {".csv", ".pdf"}:
             raise ValueError(f"不允許的檔名: {name}")
         if not path.is_file():
             raise FileNotFoundError(f"找不到檔案: {path.name}")
+        if not _is_session_file(path):
+            continue
         files.append(path)
     files = sorted(files, key=lambda p: p.name)
-    return [parse_csv(p) for p in files]
+    return [parse_file(p) for p in files]
 
 
 def session_rat(session: Session) -> str:

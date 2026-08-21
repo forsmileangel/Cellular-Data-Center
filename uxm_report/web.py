@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from .parse import list_report_files
 from .pipeline import run_build, run_ingest, run_report_from_db
 from .analysis_pages import analysis_index, analysis_module, analysis_session
 from .catalog import (
@@ -155,12 +156,12 @@ NAV_SLOT
   </div>
   <div class="hint">選填。先搜尋或下拉選已有專案；沒有才新增。都不填則存 UNKNOWN。</div>
 
-  <label>CSV 資料夾 <span class="req">*</span></label>
+  <label>報告資料夾 <span class="req">*</span></label>
   <div class="row">
     <input id="folder" type="text" placeholder="選擇或貼上本機資料夾路徑">
     <button type="button" class="secondary" id="browse">瀏覽</button>
   </div>
-  <div class="hint">列出第一層 *.csv。請勾選要進資料庫的檔；測錯留檔不要勾，以免汙染統計。</div>
+  <div class="hint">列出第一層 *.csv 與 *.pdf（略過 BandCombinations）。請勾選要進資料庫的檔；測錯留檔不要勾，以免汙染統計。PDF 沒有原 CSV 時會還原並標註折行／缺欄。</div>
   <div id="preview"></div>
 
   <p style="margin-top:22px">
@@ -277,7 +278,7 @@ async function preview() {
   const j = await r.json();
   if (!r.ok) { $('preview').textContent = j.error || '預覽失敗'; return; }
   const box = document.createElement('div');
-  box.innerHTML = '<p>找到 ' + j.csv_count + ' 個 CSV。'
+  box.innerHTML = '<p>找到 ' + (j.csv_count||0) + ' 個 CSV、' + (j.pdf_count||0) + ' 個 PDF。'
     + '<button type="button" class="secondary" id="all">全選</button> '
     + '<button type="button" class="secondary" id="none">全不選</button></p>';
   j.files.forEach((name) => {
@@ -313,8 +314,8 @@ $('ingest').onclick = async () => {
   const status = $('status');
   status.className = '';
   if (!module) { status.className='err'; status.textContent='模組型號必填：請選擇已有模組或新增'; return; }
-  if (!folder) { status.className='err'; status.textContent='請選擇 CSV 資料夾'; return; }
-  if (!files.length) { status.className='err'; status.textContent='請至少勾選一個 CSV'; return; }
+  if (!folder) { status.className='err'; status.textContent='請選擇報告資料夾'; return; }
+  if (!files.length) { status.className='err'; status.textContent='請至少勾選一個檔案'; return; }
   $('ingest').disabled = true;
   status.textContent = '匯入資料庫中…';
   try {
@@ -338,8 +339,8 @@ $('build').onclick = async () => {
   const status = $('status');
   status.className = '';
   if (!module) { status.className='err'; status.textContent='模組型號必填：請選擇已有模組或新增'; return; }
-  if (!folder) { status.className='err'; status.textContent='請選擇 CSV 資料夾'; return; }
-  if (!files.length) { status.className='err'; status.textContent='請至少勾選一個 CSV'; return; }
+  if (!folder) { status.className='err'; status.textContent='請選擇報告資料夾'; return; }
+  if (!files.length) { status.className='err'; status.textContent='請至少勾選一個檔案'; return; }
   $('build').disabled = true;
   status.textContent = '產生中（會呼叫 Excel，約數十秒）…';
   try {
@@ -645,8 +646,11 @@ class Handler(BaseHTTPRequestHandler):
             if not path.is_dir():
                 _json(self, 400, {"error": f"找不到資料夾: {folder}"})
                 return
-            files = sorted(p.name for p in path.glob("*.csv"))
-            _json(self, 200, {"csv_count": len(files), "files": files})
+            files = list_report_files(path)
+            names = [p.name for p in files]
+            n_csv = sum(1 for p in files if p.suffix.lower() == ".csv")
+            n_pdf = sum(1 for p in files if p.suffix.lower() == ".pdf")
+            _json(self, 200, {"csv_count": n_csv, "pdf_count": n_pdf, "files": names})
             return
         self.send_error(404)
 

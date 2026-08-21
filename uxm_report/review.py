@@ -282,6 +282,8 @@ def _review_sessions(store: Store, rows: list[dict], module: str, project: str) 
             f"<td>{escape(r['imei'])}</td>"
             f"<td><a href=\"{href}\">{escape(r['filename'])}</a> "
             f"<a class=\"muted\" href=\"/analysis/session?id={r['id']}\">資料分析</a></td>"
+            f"<td>TA {escape(r.get('ta_major') or '—')}</td>"
+            f"<td>{escape(r.get('source_kind') or '')}</td>"
             f"<td class=\"{_vclass(r['overall_result'])}\">{escape(r['overall_result'] or '')}</td>"
             f"<td>{r['n_sum']}</td><td>{r['n_det']}</td>"
             f"<td>{opened.get(r['id'], 0)} 未結"
@@ -300,8 +302,8 @@ def _review_sessions(store: Store, rows: list[dict], module: str, project: str) 
 </div>
 <p class="muted">{len(items)} 筆匯入紀錄。</p>
 <table>
-<tr><th>匯入時間</th><th>測試時間</th><th>IMEI</th><th>檔名</th><th>Overall</th><th>摘要</th><th>細節</th><th>Fail</th><th></th></tr>
-{''.join(trs) or '<tr><td colspan="9">這個專案還沒有匯入紀錄。</td></tr>'}
+<tr><th>匯入時間</th><th>測試時間</th><th>IMEI</th><th>檔名</th><th>TA</th><th>來源</th><th>Overall</th><th>摘要</th><th>細節</th><th>Fail</th><th></th></tr>
+{''.join(trs) or '<tr><td colspan="11">這個專案還沒有匯入紀錄。</td></tr>'}
 </table>
 {_del_script()}
 """
@@ -369,8 +371,12 @@ IMEI <b>{escape(head['imei'])}</b> ·
 匯入 {escape(head.get('imported_at') or '—')}<br>
 TestPlan {escape(head['test_plan'] or '')} ·
 Overall <span class="{_vclass(head['overall_result'])}">{escape(head['overall_result'] or '')}</span> ·
-TA {escape(head['ta_version'] or '')} · RFA {escape(head['rfa_version'] or '')}
+TA {escape(head.get('ta_major') or '—')}
+（{escape(head['ta_version'] or '')}） ·
+來源 {escape(head.get('source_kind') or 'csv')} ·
+RFA {escape(head['rfa_version'] or '')}
 </p>
+{('<div class="note"><b>PDF 還原註記</b><br>' + escape(head.get('parse_notes') or '').replace(chr(10), '<br>') + '</div>') if head.get('parse_notes') else ''}
 <div class="note">
 <b>初版假設（請核對）</b><br>
 1. 摘要列的 Channel 是 DL NR-ARFCN；6.2.x 細節列 ARFCN 多半是 UL（例如 n1 摘要 423000、細節 385000）。<br>

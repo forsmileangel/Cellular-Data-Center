@@ -29,6 +29,7 @@ class WebPageTests(unittest.TestCase):
         self.assertIn("Skip", PAGE)
         self.assertIn("selectedFiles", PAGE)
         self.assertIn("報告匯入", PAGE)
+        self.assertIn("*.pdf", PAGE)
 
     def test_orig_dock_and_hotkey_in_shell(self):
         html = _page("t", '<label class="orig-sw"><input type="checkbox" id="showOrig"> 顯示規格原文</label>')
