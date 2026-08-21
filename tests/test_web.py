@@ -8,7 +8,10 @@ from uxm_report.web import HOME_PAGE, PAGE
 
 class WebPageTests(unittest.TestCase):
     def test_home_is_cards_not_import_form(self):
-        self.assertIn("UXM 測試報告工作台", HOME_PAGE)
+        self.assertIn("Cellular Specifications and Reporting Analysis Center", HOME_PAGE)
+        self.assertNotIn("UXM 測試報告工作台", HOME_PAGE)
+        self.assertNotIn(">UR</span>", HOME_PAGE)
+        self.assertNotIn("UXM Report", HOME_PAGE)
         self.assertIn("home-card", HOME_PAGE)
         self.assertIn("/import", HOME_PAGE)
         self.assertIn("報告匯入", HOME_PAGE)
@@ -70,7 +73,8 @@ class WebPageTests(unittest.TestCase):
         from uxm_report.store import Store
 
         store = Store(":memory:")
-        store.upsert_module("FN990")
+        mid = store.upsert_module("FN990")
+        store.upsert_project(mid, "DEMO")
         html = work_page(store, module="FN990")
         self.assertIn("報告總覽", html)
         self.assertIn("統計圖表", html)
@@ -79,6 +83,11 @@ class WebPageTests(unittest.TestCase):
         self.assertIn("reportTitle", html)
         html_c = work_page(store, module="FN990", tab="charts")
         self.assertIn("統計圖表", html_c)
+        self.assertIn('class="msel"', html)
+        self.assertIn("套用篩選", html)
+        self.assertIn("來源著色", html_c)
+        self.assertIn('name="project"', html)
+        self.assertIn("釘在圖上", html_c)
 
     def test_catalog_payload_lists_module_projects(self):
         from uxm_report.store import Store

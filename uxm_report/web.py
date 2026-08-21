@@ -31,7 +31,7 @@ HOME_PAGE = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>UXM 測試報告工作台</title>
+<title>Cellular Specifications and Reporting Analysis Center</title>
 <style>
   :root { --green:#008787; --ink:#222; --muted:#666; --line:#ccc; --bg:#f6f6f6; }
   * { box-sizing:border-box; }
@@ -58,7 +58,7 @@ HOME_PAGE = """<!DOCTYPE html>
   <a href="#" onclick="uxmShutdown();return false">關閉本地伺服器</a>
 </details>
 <main>
-  <h1>UXM 測試報告工作台</h1>
+  <h1>Cellular Specifications and Reporting Analysis Center</h1>
   <p class="sub">從報告匯入、資料分析到 3GPP 規格解讀，集中在同一個工作區。</p>
   <div class="home-cards">
     <a class="home-card" href="/import"><strong>報告匯入</strong><span>把 UXM CSV 放進測試資料庫，或順便出 Excel</span></a>
@@ -459,7 +459,9 @@ def _adopt_shared_shell(document: str, title: str, current: str) -> str:
     return _page(title, nav + body + scripts)
 
 
-HOME_PAGE = _adopt_shared_shell(HOME_PAGE, "首頁", "首頁")
+HOME_PAGE = _adopt_shared_shell(
+    HOME_PAGE, "Cellular Specifications and Reporting Analysis Center", "首頁"
+)
 PAGE = _adopt_shared_shell(PAGE, "報告匯入", "報告匯入")
 
 
@@ -546,9 +548,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path in ("/db/work", "/db/module", "/db/project", "/db/charts"):
             qs = parse_qs(parsed.query)
             module = (qs.get("module") or qs.get("name") or [""])[0]
-            project = (qs.get("project") or [""])[0]
-            data_folder = (qs.get("data_folder") or [""])[0]
-            imei = (qs.get("imei") or [""])[0]
+            project = [p for p in (qs.get("project") or []) if p]
+            data_folder = [p for p in (qs.get("data_folder") or []) if p]
+            imei = [p for p in (qs.get("imei") or []) if p]
             tab = (qs.get("tab") or [""])[0]
             if parsed.path == "/db/charts":
                 tab = "charts"
@@ -557,6 +559,7 @@ class Handler(BaseHTTPRequestHandler):
             band = (qs.get("band") or [""])[0]
             chart = (qs.get("chart") or ["621-power"])[0]
             chart_group = (qs.get("group") or [""])[0]
+            color_by = (qs.get("color_by") or [""])[0]
             store = Store(ROOT / "uxm.db")
             try:
                 html = db_work(
@@ -569,6 +572,7 @@ class Handler(BaseHTTPRequestHandler):
                     band,
                     chart,
                     chart_group,
+                    color_by,
                 )
             finally:
                 store.close()

@@ -83,7 +83,7 @@ summary:focus-visible { outline:3px solid rgba(73,107,87,.28); outline-offset:2p
   width:38px; height:38px; border-radius:12px; display:grid; place-items:center;
   background:var(--green-deep); color:#fffdf9; font-weight:700; letter-spacing:.04em;
 }
-.brand strong { display:block; font-size:14px; }
+.brand strong { display:block; font-size:12px; line-height:1.35; }
 .brand small { display:block; color:var(--muted); font-size:11px; margin-top:1px; }
 .side-group { margin:0 0 22px; }
 .side-label {
@@ -330,8 +330,7 @@ def _page(title: str, body: str) -> str:
 <div class="app-shell">
   <aside class="sidebar">
     <a class="brand" href="/">
-      <span class="brand-mark">UR</span>
-      <span><strong>UXM Report</strong><small>RF validation workspace</small></span>
+      <span><strong>Cellular Specifications and Reporting Analysis Center</strong></span>
     </a>
     {sidebar}
     <details class="srv-off">

@@ -55,6 +55,165 @@ CHARTS = [
 ]
 
 RANGE_X = {"Low": 0, "Mid": 1, "High": 2}
+PALETTE = ("#496b57", "#9a6c42", "#66728a", "#82697e", "#2a7f7f", "#8b5a2b", "#4a6fa5", "#6b4f71")
+
+# Injected once per page (guarded). Click a point to pin the value on the SVG for screenshots.
+_CHART_TIP_SCRIPT = r"""
+<script>
+(function () {
+  if (window.__uxmChartTips) return;
+  window.__uxmChartTips = true;
+  var style = document.createElement("style");
+  style.textContent = "svg circle[data-tip]{cursor:pointer;}";
+  document.head.appendChild(style);
+  var pins = new WeakMap();
+  var hover = null;
+  var hoverFor = null;
+  var NS = "http://www.w3.org/2000/svg";
+  function svgOf(el) { return el.ownerSVGElement || el; }
+  function measure(s) {
+    var w = 0;
+    for (var i = 0; i < s.length; i++) w += s.charCodeAt(i) > 127 ? 12 : 7;
+    return w;
+  }
+  function makeLabel(svg, circle, text) {
+    var lines = String(text || "").split("\n");
+    var pad = 6, lineH = 14, tw = 40;
+    for (var i = 0; i < lines.length; i++) tw = Math.max(tw, measure(lines[i]));
+    var width = Math.min(300, tw + pad * 2);
+    var height = lines.length * lineH + pad * 2;
+    var cx = Number(circle.getAttribute("cx") || 0);
+    var cy = Number(circle.getAttribute("cy") || 0);
+    var vb = svg.viewBox && svg.viewBox.baseVal;
+    var maxW = vb && vb.width ? vb.width : 760;
+    var maxH = vb && vb.height ? vb.height : 300;
+    var x = cx + 10;
+    var y = cy - height - 6;
+    if (x + width > maxW - 4) x = Math.max(4, cx - width - 10);
+    if (y < 4) y = Math.min(maxH - height - 4, cy + 12);
+    var g = document.createElementNS(NS, "g");
+    g.setAttribute("class", "chart-callout");
+    var rect = document.createElementNS(NS, "rect");
+    rect.setAttribute("x", String(x));
+    rect.setAttribute("y", String(y));
+    rect.setAttribute("width", String(width));
+    rect.setAttribute("height", String(height));
+    rect.setAttribute("fill", "#fffdf9");
+    rect.setAttribute("stroke", "#393b38");
+    rect.setAttribute("rx", "3");
+    g.appendChild(rect);
+    for (var j = 0; j < lines.length; j++) {
+      var t = document.createElementNS(NS, "text");
+      t.setAttribute("x", String(x + pad));
+      t.setAttribute("y", String(y + pad + 11 + j * lineH));
+      t.setAttribute("font-size", "11");
+      t.setAttribute("fill", "#222");
+      t.textContent = lines[j];
+      g.appendChild(t);
+    }
+    svg.appendChild(g);
+    return g;
+  }
+  function clearHover() {
+    if (hover && hover.parentNode) hover.parentNode.removeChild(hover);
+    hover = null;
+    hoverFor = null;
+  }
+  function markPinned(circle, on) {
+    if (on) {
+      if (!circle.hasAttribute("data-pin-stroke")) {
+        circle.setAttribute("data-pin-stroke", circle.getAttribute("stroke") || "");
+        circle.setAttribute("data-pin-sw", circle.getAttribute("stroke-width") || "");
+        circle.setAttribute("data-pin-r", circle.getAttribute("r") || "3.5");
+      }
+      circle.setAttribute("stroke", "#222");
+      circle.setAttribute("stroke-width", "2");
+      circle.setAttribute("r", "5.5");
+    } else {
+      circle.setAttribute("stroke", circle.getAttribute("data-pin-stroke") || "none");
+      circle.setAttribute("stroke-width", circle.getAttribute("data-pin-sw") || "0");
+      circle.setAttribute("r", circle.getAttribute("data-pin-r") || "3.5");
+    }
+  }
+  document.addEventListener("mouseover", function (e) {
+    var t = e.target;
+    if (!t || t.tagName !== "circle" || !t.getAttribute("data-tip")) return;
+    if (pins.has(t) || hoverFor === t) return;
+    clearHover();
+    hover = makeLabel(svgOf(t), t, t.getAttribute("data-tip"));
+    hoverFor = t;
+  });
+  document.addEventListener("mouseout", function (e) {
+    var t = e.target;
+    if (!t || hoverFor !== t) return;
+    clearHover();
+  });
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!t || t.tagName !== "circle" || !t.getAttribute("data-tip")) return;
+    if (pins.has(t)) {
+      var g = pins.get(t);
+      if (g && g.parentNode) g.parentNode.removeChild(g);
+      pins.delete(t);
+      markPinned(t, false);
+      return;
+    }
+    clearHover();
+    pins.set(t, makeLabel(svgOf(t), t, t.getAttribute("data-tip")));
+    markPinned(t, true);
+  });
+})();
+</script>
+"""
+
+
+def _fmt_num(value) -> str:
+    if value is None:
+        return "—"
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    text = str(value).strip()
+    return text if text else "—"
+
+
+def _point_title(point: dict) -> str:
+    unit = (point.get("unit") or "").strip()
+    raw = point.get("y")
+    value = f"{raw:.4g}" if isinstance(raw, (int, float)) else _fmt_num(raw)
+    line1 = "  ".join(
+        part for part in (point.get("lmh") or "", f"{value} {unit}".strip(), point.get("pf") or "") if part
+    )
+    line2 = f"LSL {_fmt_num(point.get('lsl'))} / USL {_fmt_num(point.get('usl'))}"
+    seen: list[str] = []
+    for part in (
+        point.get("label") or "",
+        point.get("imei") or "",
+        point.get("data_folder") or "",
+        point.get("project") or "",
+    ):
+        if part and part not in seen:
+            seen.append(part)
+    lines = [line1, line2]
+    if seen:
+        lines.append(" · ".join(seen))
+    filename = point.get("filename") or ""
+    if filename:
+        lines.append(filename)
+    return "\n".join(lines)
+
+
+def _tip_attr(point: dict) -> str:
+    return escape(_point_title(point)).replace("\n", "&#10;")
+
+
+def _meta(row: dict) -> dict:
+    return {
+        "unit": row.get("unit") or "",
+        "imei": row.get("imei") or "",
+        "data_folder": row.get("data_folder") or "",
+        "project": row.get("project") or "",
+        "filename": row.get("filename") or "",
+    }
 
 
 def assign_lmh(rows: list[dict]) -> list[dict]:
@@ -104,6 +263,7 @@ def svg_lmh(rows: list[dict], ylabel: str, width: int = 640, height: int = 260) 
                 "usl": limit_float(row.get("upper_limit")),
                 "pf": row.get("pf") or "",
                 "lmh": row["lmh"],
+                **_meta(row),
             }
         )
     if not pts:
@@ -162,12 +322,15 @@ def svg_lmh(rows: list[dict], ylabel: str, width: int = 640, height: int = 260) 
         y = _scale([p["y"]], top, bottom, lo, hi)[0]
         color = "#8b0000" if p["pf"] == "Fail" else "#008787"
         svg.append(
-            f'<circle cx="{xs[i] + jitter}" cy="{y}" r="3.5" fill="{color}" fill-opacity="0.8"/>'
+            f'<circle cx="{xs[i] + jitter}" cy="{y}" r="3.5" fill="{color}" fill-opacity="0.8"'
+            f' data-tip="{_tip_attr(p)}"/>'
         )
     svg.append("</svg>")
     svg.append(
-        f'<p class="muted">點數 {len(pts)}（綠=Pass，紅=Fail）。虛線是 3GPP 下限／上限。同一 channel 多點會左右微移以免重疊。</p>'
+        f'<p class="muted">點數 {len(pts)}（綠=Pass，紅=Fail）。虛線是 3GPP 下限／上限。'
+        "滑鼠移到點上可看量測值；點一下可把數值釘在圖上方便截圖，再點一次取消。</p>"
     )
+    svg.append(_CHART_TIP_SCRIPT)
     return "\n".join(svg)
 
 
@@ -178,7 +341,7 @@ def svg_comparison(
     height: int = 300,
 ) -> str:
     """Overlay cohorts only after the caller proves the exact group is shared."""
-    palette = ("#496b57", "#9a6c42", "#66728a", "#82697e")
+    palette = PALETTE
     pts = []
     for series_index, (label, rows) in enumerate(series):
         for row in assign_lmh(rows):
@@ -194,6 +357,8 @@ def svg_comparison(
                     "lsl": limit_float(row.get("lower_limit")),
                     "usl": limit_float(row.get("upper_limit")),
                     "pf": row.get("pf") or "",
+                    "lmh": row["lmh"],
+                    **_meta(row),
                 }
             )
     if not pts:
@@ -244,7 +409,8 @@ def svg_comparison(
         stroke = "#a14f43" if point["pf"] == "Fail" else "#fffdf9"
         svg.append(
             f'<circle cx="{xs[point["x"]] + offset + jitter}" cy="{y}" r="4" '
-            f'fill="{color}" stroke="{stroke}" stroke-width="1.5"/>'
+            f'fill="{color}" stroke="{stroke}" stroke-width="1.5"'
+            f' data-tip="{_tip_attr(point)}"/>'
         )
     legend_x = left
     for index, (label, _rows) in enumerate(series):
@@ -253,5 +419,9 @@ def svg_comparison(
         svg.append(f'<text x="{legend_x + 8}" y="20" font-size="11">{escape(label)}</text>')
         legend_x += min(170, 24 + len(label) * 12)
     svg.append("</svg>")
-    svg.append('<p class="muted">顏色代表資料夾 cohort；紅色外框代表該細節列由儀器標為 Fail。</p>')
+    svg.append(
+        '<p class="muted">顏色代表來源；紅色外框代表該細節列由儀器標為 Fail。'
+        "滑鼠移到點上可看量測值；點一下可把數值釘在圖上方便截圖，再點一次取消。</p>"
+    )
+    svg.append(_CHART_TIP_SCRIPT)
     return "\n".join(svg)

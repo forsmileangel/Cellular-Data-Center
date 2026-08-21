@@ -51,6 +51,8 @@ class ProjectRenameTests(unittest.TestCase):
             self.assertEqual(len(t17), 1)
             self.assertEqual(len(t20), 1)
             self.assertEqual(t17[0]["data_folder"], "TA17")
+            both = store.filter_sessions("FN990B", "模組引進", ["TA17", "TA20"])
+            self.assertEqual(len(both), 2)
             n = store.delete_sessions([a])
             self.assertEqual(n, 1)
             self.assertEqual(len(store.filter_sessions("FN990B", "模組引進")), 1)

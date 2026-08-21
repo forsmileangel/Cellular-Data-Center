@@ -7,35 +7,53 @@ from html import escape
 from urllib.parse import urlencode
 
 from .analysis import MeasurementGroup, measurement_group_from_row
-from .charts import CHARTS, svg_lmh
+from .charts import CHARTS, svg_comparison, svg_lmh
 from .review import _page, _vclass, site_nav
 from .spec import NR_RANGE_ORDER, nr_range_class
 from .parse import plan_label
 from .store import Store
 
 
+def _as_list(value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value else []
+    return [item for item in value if item]
+
+
+def _hidden_multi(name: str, values: list[str]) -> str:
+    return "".join(
+        f'<input type="hidden" name="{escape(name)}" value="{escape(item)}">'
+        for item in values
+    )
+
+
 def _work_url(
     module: str,
-    project: str = "",
-    data_folder: str = "",
-    imei: str = "",
+    project: str | list[str] = "",
+    data_folder: str | list[str] = "",
+    imei: str | list[str] = "",
     tab: str = "report",
     band: str = "",
     chart: str = "",
+    color_by: str = "",
 ) -> str:
-    q: dict[str, str] = {"module": module}
-    if project:
-        q["project"] = project
-    if data_folder:
-        q["data_folder"] = data_folder
-    if imei:
-        q["imei"] = imei
+    q: list[tuple[str, str]] = [("module", module)]
+    for item in _as_list(project):
+        q.append(("project", item))
+    for item in _as_list(data_folder):
+        q.append(("data_folder", item))
+    for item in _as_list(imei):
+        q.append(("imei", item))
     if tab and tab != "report":
-        q["tab"] = tab
+        q.append(("tab", tab))
     if band:
-        q["band"] = band
+        q.append(("band", band))
     if chart:
-        q["chart"] = chart
+        q.append(("chart", chart))
+    if color_by:
+        q.append(("color_by", color_by))
     return "/db/work?" + urlencode(q)
 
 
@@ -143,12 +161,39 @@ refreshNamePreview();
 """
 
 
-def _sel(name: str, current: str, options: list[str], all_label: str) -> str:
-    bits = [f'<option value="">{escape(all_label)}</option>']
-    for o in options:
-        sel = " selected" if o == current else ""
-        bits.append(f'<option value="{escape(o)}"{sel}>{escape(o)}</option>')
-    return f'<select name="{name}" onchange="this.form.submit()">{"".join(bits)}</select>'
+def _msel(name: str, selected: list[str], options: list[str], all_label: str) -> str:
+    chosen = [item for item in selected if item]
+    shown = list(options)
+    for item in chosen:
+        if item not in shown:
+            shown.append(item)
+    picked = set(chosen)
+    if not picked:
+        summary = all_label
+    elif len(picked) == 1:
+        summary = next(iter(picked))
+    else:
+        summary = f"{len(picked)} 項"
+    checks = []
+    for option in shown:
+        ck = " checked" if option in picked else ""
+        checks.append(
+            f'<label><input type="checkbox" name="{escape(name)}" value="{escape(option)}"{ck}> '
+            f"{escape(option)}</label>"
+        )
+    inner = "".join(checks) or '<p class="muted">沒有選項</p>'
+    return (
+        f'<details class="msel">'
+        f"<summary>{escape(summary)}</summary>"
+        f'<div class="msel-panel">'
+        f'<p class="msel-actions">'
+        f'<button type="button" class="secondary msel-all">全選</button>'
+        f'<button type="button" class="secondary msel-none">全不選</button>'
+        f'<button type="button" class="secondary msel-inv">反選</button>'
+        f"</p>"
+        f"{inner}"
+        f"</div></details>"
+    )
 
 
 def index_page(store: Store, **_unused) -> str:
@@ -201,13 +246,14 @@ document.getElementById("addModule").onclick = async () => {{
     return _page("測試資料庫", body)
 
 
-def _resolve_module(store: Store, module: str, imei: str) -> str:
+def _resolve_module(store: Store, module: str, imei: str | list[str]) -> str:
     if module:
         return module
-    if not imei:
+    picked = _as_list(imei)
+    if not picked:
         return ""
     mods: list[str] = []
-    for r in store.filter_sessions(imei=imei):
+    for r in store.filter_sessions(imei=picked):
         m = r.get("module") or ""
         if m and m not in mods:
             mods.append(m)
@@ -217,13 +263,14 @@ def _resolve_module(store: Store, module: str, imei: str) -> str:
 def work_page(
     store: Store,
     module: str = "",
-    project: str = "",
-    data_folder: str = "",
-    imei: str = "",
+    project: str | list[str] = "",
+    data_folder: str | list[str] = "",
+    imei: str | list[str] = "",
     tab: str = "report",
     band: str = "",
     chart_id: str = "",
     chart_group: str = "",
+    color_by: str = "",
 ) -> str:
     module = _resolve_module(store, module, imei)
     if not module:
@@ -232,57 +279,105 @@ def work_page(
             f'{_nav()}<p>請先從<a href="/db">測試資料庫</a>選一個模組。</p>',
         )
     tab = "charts" if tab == "charts" else "report"
-    projects = [p["name"] for p in store.list_projects(module)]
-    folders = store.list_folders(module, project) if project else []
-    if not project:
-        names: list[str] = []
-        for p in projects:
-            for n in store.list_folders(module, p):
-                if n not in names:
-                    names.append(n)
-        folders = names
-    imeis = sorted({r["imei"] for r in store.filter_sessions(module=module) if r.get("imei")})
-    rows = store.filter_sessions(module, project, data_folder, imei)
-    title = module if not project else f"{module} · {project}"
+    selected_projects = _as_list(project)
+    selected_folders = _as_list(data_folder)
+    selected_imeis = _as_list(imei)
+    project_names = [p["name"] for p in store.list_projects(module)]
+    folder_names: list[str] = []
+    for name in selected_projects or project_names:
+        for folder in store.list_folders(module, name):
+            if folder not in folder_names:
+                folder_names.append(folder)
+    scoped = store.filter_sessions(module, selected_projects, selected_folders)
+    imei_names = sorted({r["imei"] for r in scoped if r.get("imei")})
+    rows = store.filter_sessions(module, selected_projects, selected_folders, selected_imeis)
+    if not selected_projects:
+        title = module
+        crumb_tail = ""
+    elif len(selected_projects) == 1:
+        title = f"{module} · {selected_projects[0]}"
+        crumb_tail = f" / {escape(selected_projects[0])}"
+    else:
+        title = f"{module} · {len(selected_projects)} 個專案"
+        crumb_tail = f" / {len(selected_projects)} 個專案"
     crumb = (
         f'{_nav()}<p class="muted"><a href="/db">測試資料庫</a> / {escape(module)}'
-        + (f" / {escape(project)}" if project else "")
+        + crumb_tail
         + "</p>"
     )
+    keep = ""
+    if tab == "charts":
+        if band:
+            keep += f'<input type="hidden" name="band" value="{escape(band)}">'
+        if chart_id:
+            keep += f'<input type="hidden" name="chart" value="{escape(chart_id)}">'
+        if chart_group:
+            keep += f'<input type="hidden" name="group" value="{escape(chart_group)}">'
+        if color_by:
+            keep += f'<input type="hidden" name="color_by" value="{escape(color_by)}">'
+    admin_project = selected_projects[0] if len(selected_projects) == 1 else ""
     filt = f"""
 <form method="get" action="/db/work" class="filters">
   <input type="hidden" name="module" value="{escape(module)}">
   <input type="hidden" name="tab" value="{escape(tab)}">
-  <label>專案 {_sel("project", project, projects, "全部專案")}</label>
-  <label>資料夾 {_sel("data_folder", data_folder, folders, "全部資料夾")}</label>
-  <label>IMEI {_sel("imei", imei, imeis, "全部 IMEI")}</label>
+  {keep}
+  <label>專案 {_msel("project", selected_projects, project_names, "全部專案")}</label>
+  <label>資料夾 {_msel("data_folder", selected_folders, folder_names, "全部資料夾")}</label>
+  <label>IMEI {_msel("imei", selected_imeis, imei_names, "全部 IMEI")}</label>
+  <button type="submit">套用篩選</button>
 </form>
 """
     if tab == "charts":
         inner = _charts_panel(
             store,
             module,
-            project,
-            data_folder,
-            imei,
+            selected_projects,
+            selected_folders,
+            selected_imeis,
             band,
             chart_id,
             chart_group,
+            color_by,
             rows,
         )
     else:
-        inner = _report_panel(store, module, project, data_folder, imei, rows)
+        inner = _report_panel(store, module, admin_project, "", "", rows)
     body = f"""
 {crumb}
 <h1>{escape(title)}</h1>
 {filt}
-{_tabs(module, project, data_folder, imei, tab)}
+{_tabs(module, selected_projects, selected_folders, selected_imeis, tab)}
 {inner}
 <style>
 .filters {{ display:flex; flex-wrap:wrap; gap:12px 18px; margin:14px 0; align-items:end; }}
 .filters label {{ font-size:13px; }}
 .filters select {{ display:block; margin-top:4px; min-width:160px; }}
+.msel {{ position:relative; display:block; margin-top:4px; }}
+.msel summary {{ cursor:pointer; min-width:160px; padding:4px 8px; border:1px solid #ccc;
+  background:#fff; list-style:none; }}
+.msel summary::-webkit-details-marker {{ display:none; }}
+.msel-panel {{ position:absolute; z-index:6; background:#fff; border:1px solid #ccc;
+  padding:8px; min-width:220px; max-height:260px; overflow:auto;
+  box-shadow:0 2px 8px rgba(0,0,0,.08); }}
+.msel-panel label {{ display:block; font-size:13px; margin:4px 0; }}
+.msel-actions {{ display:flex; gap:6px; margin:0 0 8px; }}
 </style>
+<script>
+document.querySelectorAll("details.msel").forEach((box) => {{
+  const panel = box.querySelector(".msel-panel");
+  if (!panel) return;
+  const boxes = () => panel.querySelectorAll('input[type=checkbox]');
+  panel.querySelector(".msel-all")?.addEventListener("click", () => {{
+    boxes().forEach((el) => {{ el.checked = true; }});
+  }});
+  panel.querySelector(".msel-none")?.addEventListener("click", () => {{
+    boxes().forEach((el) => {{ el.checked = false; }});
+  }});
+  panel.querySelector(".msel-inv")?.addEventListener("click", () => {{
+    boxes().forEach((el) => {{ el.checked = !el.checked; }});
+  }});
+}});
+</script>
 """
     return _page(title, body)
 
@@ -510,15 +605,44 @@ if (moveBtn) moveBtn.onclick = async () => {{
 """
 
 
+def _color_key(row: dict, mode: str) -> str:
+    if mode == "project":
+        return row.get("project") or "（無專案）"
+    if mode == "folder":
+        return row.get("data_folder") or "UNKNOWN"
+    return row.get("imei") or "（無 IMEI）"
+
+
+def _auto_color_mode(rows: list[dict]) -> str:
+    for mode, field in (("imei", "imei"), ("folder", "data_folder"), ("project", "project")):
+        if len({(row.get(field) or "") for row in rows}) > 1:
+            return mode
+    return ""
+
+
+def _plot_rows(rows: list[dict], ylabel: str, color_by: str) -> str:
+    mode = color_by if color_by in ("imei", "folder", "project") else _auto_color_mode(rows)
+    if not mode:
+        return svg_lmh(rows, ylabel)
+    grouped: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        grouped[_color_key(row, mode)].append(row)
+    series = [(label, grouped[label]) for label in sorted(grouped)]
+    if len(series) <= 1:
+        return svg_lmh(rows, ylabel)
+    return svg_comparison(series, ylabel)
+
+
 def _charts_panel(
     store: Store,
     module: str,
-    project: str,
-    data_folder: str,
-    imei: str,
+    project: str | list[str],
+    data_folder: str | list[str],
+    imei: str | list[str],
     band: str,
     chart_id: str,
     chart_group: str,
+    color_by: str,
     sessions: list[dict],
 ) -> str:
     import time
@@ -563,7 +687,7 @@ def _charts_panel(
     )
     selected_rows = buckets.get(selected.signature, []) if selected else []
     plot = (
-        svg_lmh(selected_rows, spec["ylabel"])
+        _plot_rows(selected_rows, spec["ylabel"], color_by)
         if selected_rows
         else '<p class="muted">這個 band 沒有此測項的數字。</p>'
     )
@@ -615,23 +739,30 @@ def _charts_panel(
     if last_group is not None:
         chart_opts.append("</optgroup>")
     chart_opts = "".join(chart_opts)
+    color_mode = color_by if color_by in ("imei", "folder", "project") else "auto"
+    color_opts = []
+    for value, label in (("auto", "自動"), ("imei", "IMEI"), ("folder", "資料夾"), ("project", "專案")):
+        sel = " selected" if value == color_mode else ""
+        color_opts.append(f'<option value="{escape(value)}"{sel}>{escape(label)}</option>')
     hidden = (
         f'<input type="hidden" name="module" value="{escape(module)}">'
         f'<input type="hidden" name="tab" value="charts">'
-        + (f'<input type="hidden" name="project" value="{escape(project)}">' if project else "")
-        + (f'<input type="hidden" name="data_folder" value="{escape(data_folder)}">' if data_folder else "")
-        + (f'<input type="hidden" name="imei" value="{escape(imei)}">' if imei else "")
+        + _hidden_multi("project", _as_list(project))
+        + _hidden_multi("data_folder", _as_list(data_folder))
+        + _hidden_multi("imei", _as_list(imei))
     )
     return f"""
 <div class="note">
-圖跟報告用同一組篩選（模組／專案／資料夾／IMEI）。一次一個 band、一個測項。
+圖跟報告用同一組篩選（模組／專案／資料夾／IMEI，可複選比較）。一次一個 band、一個測項。
 這次查到 {len(rows)} 列；目前精確條件組 {len(selected_rows)} 列、{ms:.0f} ms。系統不平均不同 LSL／USL。
+多個來源時用顏色區分。滑鼠移到點上可看量測值；點一下可把數值釘在圖上方便截圖。
 </div>
 <form method="get" action="/db/work" class="row">
   {hidden}
   <label>Band <select name="band" onchange="this.form.submit()">{''.join(band_opt_html)}</select></label>
   <label>測項 <select name="chart" onchange="this.form.submit()">{chart_opts}</select></label>
   <label>精確條件 <select name="group" onchange="this.form.submit()">{''.join(group_opts)}</select></label>
+  <label>來源著色 <select name="color_by" onchange="this.form.submit()">{''.join(color_opts)}</select></label>
 </form>
 <h2>{escape(spec["title"])} <span class="muted">{escape(spec["spec"])} · {escape(band or "")}</span></h2>
 {plot}

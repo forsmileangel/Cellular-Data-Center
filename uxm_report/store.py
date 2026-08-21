@@ -10,6 +10,27 @@ from .interpret import meaning_of, skip_note
 from .parse import Session, bw_mhz, session_rat, ta_major
 from .spec import classify_channels
 
+
+def _filter_values(value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value else []
+    return [str(item) for item in value if item]
+
+
+def _and_in(
+    sql: str, args: list, column: str, value: str | list[str] | tuple[str, ...] | None
+) -> tuple[str, list]:
+    vals = _filter_values(value)
+    if not vals:
+        return sql, args
+    if len(vals) == 1:
+        return sql + f" AND {column}=?", args + [vals[0]]
+    placeholders = ",".join("?" * len(vals))
+    return sql + f" AND {column} IN ({placeholders})", args + vals
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS modules (
     id INTEGER PRIMARY KEY,
@@ -997,9 +1018,9 @@ class Store:
     def filter_sessions(
         self,
         module: str = "",
-        project: str = "",
-        data_folder: str = "",
-        imei: str = "",
+        project: str | list[str] = "",
+        data_folder: str | list[str] = "",
+        imei: str | list[str] = "",
     ) -> list[dict]:
         sql = """
             SELECT s.id, m.model, p.name, COALESCE(f.name,'UNKNOWN'), dut.imei,
@@ -1017,15 +1038,9 @@ class Store:
         if module:
             sql += " AND m.model=?"
             args.append(module)
-        if project:
-            sql += " AND p.name=?"
-            args.append(project)
-        if data_folder:
-            sql += " AND f.name=?"
-            args.append(data_folder)
-        if imei:
-            sql += " AND dut.imei=?"
-            args.append(imei)
+        sql, args = _and_in(sql, args, "p.name", project)
+        sql, args = _and_in(sql, args, "f.name", data_folder)
+        sql, args = _and_in(sql, args, "dut.imei", imei)
         sql += " GROUP BY s.id ORDER BY m.model, p.name, f.name, s.filename"
         rows = self.conn.execute(sql, args).fetchall()
         keys = (
@@ -1056,19 +1071,20 @@ class Store:
     def chart_points(
         self,
         module: str,
-        project: str,
+        project: str | list[str],
         band_token: str,
         test_like: str,
         item: str,
         limit: int = 5000,
-        data_folder: str = "",
-        imei: str = "",
+        data_folder: str | list[str] = "",
+        imei: str | list[str] = "",
     ) -> list[dict]:
-        """One test + one item. Optional project/folder/IMEI. Cap 800 points."""
+        """One test + one item. Optional project/folder/IMEI filters (each may be a list)."""
         sql = """
             SELECT s.id, s.filename, s.start_time, x.test_case, x.item, x.band,
                    x.bandwidth, x.scs, x.modulation, x.rb, x.condition,
-                   x.arfcn, x.value, x.lower_limit, x.upper_limit, x.unit, x.pf
+                   x.arfcn, x.value, x.lower_limit, x.upper_limit, x.unit, x.pf,
+                   p.name, COALESCE(f.name,'UNKNOWN'), dut.imei
             FROM detail_rows x
             JOIN sessions s ON s.id = x.session_id
             JOIN projects p ON p.id = s.project_id
@@ -1083,15 +1099,9 @@ class Store:
                   = UPPER(REPLACE(REPLACE(?, 'NR_', ''), 'n', 'N'))
         """
         args: list = [module, item, test_like, band_token]
-        if project:
-            sql += " AND p.name=?"
-            args.append(project)
-        if data_folder:
-            sql += " AND f.name=?"
-            args.append(data_folder)
-        if imei:
-            sql += " AND dut.imei=?"
-            args.append(imei)
+        sql, args = _and_in(sql, args, "p.name", project)
+        sql, args = _and_in(sql, args, "f.name", data_folder)
+        sql, args = _and_in(sql, args, "dut.imei", imei)
         sql += " ORDER BY s.start_time, s.id LIMIT ?"
         args.append(limit)
         rows = self.conn.execute(sql, args).fetchall()
@@ -1113,6 +1123,9 @@ class Store:
             "upper_limit",
             "unit",
             "pf",
+            "project",
+            "data_folder",
+            "imei",
         )
         return [dict(zip(keys, r)) for r in rows]
 
